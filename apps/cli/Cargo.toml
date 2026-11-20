@@ -1,0 +1,15 @@
+[package]
+name = "profileport-cli"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+description = "ProfilePort command-line interface"
+
+[[bin]]
+name = "profileport"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6.9", features = ["derive"] }
+profileport-engine = { version = "0.1.0", path = "../../crates/engine" }
+profileport-package = { version = "0.1.0", path = "../../crates/package" }

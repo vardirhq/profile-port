@@ -1,0 +1,146 @@
+# Package format, version 1
+
+The on-disk format of a ProfilePort transfer package. The rationale is in
+[ADR 0002](decisions/0002-package-format.md). Reference implementation:
+`crates/package`.
+
+This document exists so that customer data is never locked into
+ProfilePort. With a package and its transfer code, the contents can be
+recovered by any implementation of this spec.
+
+## Layout
+
+```text
+<drive>/ProfilePort/transfers/<ticket>-<hex>/
+├── header.bin
+├── status.cbor
+├── manifest.log
+└── packs/
+    ├── 000000.pack
+    ├── 000001.pack
+    └── …
+```
+
+All integers are little-endian. CBOR is RFC 8949 as produced by
+`ciborium` from the Rust types in `crates/package/src/format.rs`
+(externally tagged enums, struct fields by name).
+
+## Cryptography
+
+| Purpose | Algorithm |
+|---|---|
+| Encryption of records and chunks | XChaCha20-Poly1305, 24-byte random nonce, 16-byte tag |
+| Key derivation from the transfer code | Argon2id v1.3, parameters in the header (default 64 MiB, t=3, p=1), 32-byte output |
+| File and code-check hashes | BLAKE3 |
+
+`seal(key, aad, m)` = `nonce ‖ XChaCha20-Poly1305(key, nonce, aad, m)`.
+
+## Transfer code
+
+12 symbols from the Crockford base32 alphabet
+`0123456789ABCDEFGHJKMNPQRSTVWXYZ`, shown as `XXXX-XXXX-XXXX`.
+
+- Symbols 1–10: random (50 bits).
+- Symbols 11–12: the first two bytes of
+  `BLAKE3("profileport transfer code check v1" ‖ s₁…s₁₀)`, each masked to 5
+  bits, where `sᵢ` are the symbol *values* (0–31).
+- Parsing ignores `-` and whitespace, is case-insensitive, and maps
+  `O→0`, `I→1`, `L→1`.
+- The Argon2id password is the 10 data symbols as ASCII characters.
+
+## header.bin (plaintext)
+
+```text
+"PPORTPKG" (8 bytes) ‖ version: u16 = 1 ‖ CBOR(Header)
+```
+
+`Header` fields: `package_id` (16 random bytes), `ticket` (1–32 of
+`[A-Za-z0-9_-]`), `created_unix`, `kdf` {`m_cost_kib`, `t_cost`, `p_cost`,
+`salt` (16 bytes)}, `wrapped_key`, `chunk_size`.
+
+`wrapped_key = seal(KEK, AAD_h, package_key)` where
+`KEK = Argon2id(code, kdf)` and
+
+```text
+AAD_h = "profileport header v1" ‖ package_id ‖ created_unix: i64 ‖ chunk_size: u32 ‖ ticket (UTF-8)
+```
+
+Binding the ticket in the AAD means a relabelled package refuses its code.
+
+## status.cbor (plaintext)
+
+`Status` {`state`: InProgress | Complete | CompleteWithIssues, `files`,
+`bytes`, `skipped`, `updated_unix`}. Informational only. It is rewritten
+atomically on each commit, and the manifest is authoritative.
+
+## manifest.log (encrypted)
+
+A sequence of frames:
+
+```text
+len: u32 ‖ seal(package_key, AAD_i, CBOR(Record))
+AAD_i = "profileport log v1" ‖ package_id ‖ i: u64      (i = 0, 1, 2, …)
+```
+
+Binding the index means frames can't be reordered, removed from the
+middle, or moved between packages.
+
+**Reading rule:** a frame that is truncated, or that fails authentication
+*and* ends exactly at end-of-file, is a torn write. Discard it and stop.
+Any other failure means the manifest is corrupt.
+
+### Records
+
+| Record | Meaning |
+|---|---|
+| `Begin` {source_root, computer, profile, started_unix, tool_version} | Always first |
+| `Dir` {path, meta} | A folder |
+| `FileStart` {id, path, meta, size} | A file begins; `size` is the size at start |
+| `Chunks` {id, chunks: [ChunkRef]} | Further chunks of file `id`, in order |
+| `FileEnd` {id, blake3, changed_during_copy} | File complete; `blake3` is the hash of all its plaintext |
+| `FileAbort` {id} | Reading the source failed; discard file `id` |
+| `Link` {path, target, meta} | A symlink or junction, recorded but not followed |
+| `Skipped` {path, reason, detail} | Not copied; `reason` is one of Excluded, PermissionDenied, Locked, Vanished, InvalidName, CloudOnly, ReadError |
+| `End` {finished_unix} | Export finished. Without it the package is incomplete |
+
+A file is in the package only if its `FileStart` is followed by a
+`FileEnd`. `ChunkRef` = {`pack`, `offset`, `stored_len`, `plain_len`}.
+
+`meta` = {`modified`, `created`: optional {secs: i64, nanos: u32} since the
+Unix epoch, `readonly`, `win_attributes`: optional u32}.
+
+### Paths
+
+Relative, `/`-separated, UTF-8. Readers **must** reject (and restore
+nothing from) a package containing a path that is empty, starts with `/`,
+or has a component that is empty, `.` or `..`, or that contains `\`, `:`
+or a control character. `Skipped` paths are informational and are never
+restored.
+
+## packs/NNNNNN.pack (encrypted)
+
+Concatenated sealed chunks with no framing. They are located only through
+`ChunkRef`s.
+
+```text
+chunk = seal(package_key, AAD_c, plaintext)        |plaintext| ≤ chunk_size
+AAD_c = "profileport chunk v1" ‖ package_id ‖ file_id: u64 ‖ chunk_index: u64
+```
+
+Pack bytes not referenced by any committed record (left over from an
+interruption) are garbage. Writers truncate them on resume.
+
+## Write protocol (durability)
+
+1. Write chunk data to the current pack.
+2. **Commit:** `fsync` the pack(s), *then* append the buffered records to
+   the log, *then* `fsync` the log, then rewrite `status.cbor` atomically.
+
+A record that refers to chunk data is therefore never durable before the
+data. After a crash, everything up to the last commit is intact.
+
+**Resume:** read the log, truncate it to the valid prefix, find the
+furthest committed chunk, truncate that pack there, delete later packs,
+and continue. A file with `FileStart` but no `FileEnd` is continued from
+its committed chunks if the source file is unchanged (same size and
+modified time). Otherwise it is aborted and copied again.

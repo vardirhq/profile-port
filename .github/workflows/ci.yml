@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux:
+    name: Linux (engine tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # The desktop app needs X11/font libraries; the engine is what matters here.
+      - run: cargo clippy --workspace --exclude profileport-desktop --all-targets -- -D warnings
+      - run: cargo test --workspace --exclude profileport-desktop
+
+  windows:
+    name: Windows (tests, builds, smoke test)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Unit and integration tests
+        run: cargo test --workspace --exclude profileport-desktop
+      - name: Release builds
+        run: cargo build --release -p profileport-cli -p profileport-desktop
+      - name: Windows smoke test (junctions, long paths, locked files, attributes, ADS)
+        shell: pwsh
+        run: ./scripts/windows-smoke.ps1 -Exe target/release/profileport.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: profileport-windows-x64
+          path: |
+            target/release/profileport.exe
+            target/release/ProfilePort.exe

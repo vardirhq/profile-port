@@ -39,13 +39,21 @@ Copy files as-is under `transfers/<id>/files/…`, with a manifest alongside.
 Each package is a directory:
 
 ```text
-transfers/<package-id>/
+transfers/<ticket>-<id>/
 ├── header.bin        # format version, KDF params, wrapped package key
-├── manifest.db.enc   # encrypted SQLite: paths, metadata, hashes, chunk refs
+├── status.cbor       # plaintext progress counters for the dashboard
+├── manifest.log      # encrypted append-only log: paths, metadata, hashes, chunk refs
 └── packs/
-    ├── 0000.pack     # ~64 MB append-only pack files of encrypted chunks
+    ├── 000000.pack   # ~64 MB append-only pack files of encrypted chunks
     └── …
 ```
+
+*Implementation note:* the manifest was first planned as an encrypted SQLite
+file. It is an **append-only log of individually encrypted records**
+instead: SQLite would need a plaintext working copy somewhere while being
+written (exactly the leak this format exists to prevent), and a log is
+trivially recoverable after a pulled drive — a torn final record is simply
+discarded. Full specification: [`docs/package-format.md`](../package-format.md).
 
 - Files are split into chunks; each chunk is encrypted with
   XChaCha20-Poly1305 (or AES-256-GCM) under a random per-package key.
@@ -94,7 +102,8 @@ wrapped key still opens with it.
 **Decision:**
 
 - Each package has a random key, wrapped (Argon2id → key-encryption key) with
-  a **transfer code** generated at the end of export. The code is never
+  a **transfer code** generated when the package is created, **before any
+  data is copied**. The code is never
   written to the drive. Restore asks for it.
 - The technician writes the code on a **paper device tag** that stays with
   the customer's devices (taped to the old PC or its bag), **not in the
@@ -133,8 +142,10 @@ The real risk is a mistranscribed code while the source is about to be
 released — worst for recovery from a failing drive, where a second backup
 may be impossible. So:
 
-- Before the export screen can be closed, the technician **types the code
-  back once**. A mismatch shows the code again.
+- The code is shown and the technician **types it back once before copying
+  starts**. A mismatch shows the code again. Showing it only at the end
+  would make an interrupted export impossible to resume: the code is the
+  only way back in. (Found while writing the crash-and-resume tests.)
 - For packages marked as **recovery jobs**, ProfilePort never offers to
   delete the package until the restore is verified **and** the technician
   confirms the customer has checked their data.
