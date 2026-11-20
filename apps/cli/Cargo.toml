@@ -6,7 +6,7 @@ publish.workspace = true
 description = "ProfilePort command-line interface"
 
 [[bin]]
-name = "profileport"
+name = "profileport-cli"
 path = "src/main.rs"
 
 [dependencies]

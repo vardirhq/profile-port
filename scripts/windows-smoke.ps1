@@ -8,7 +8,7 @@
 #   FAIL  regression: the script exits non-zero
 #   GAP   known, not implemented yet: reported, does not fail the run
 #
-# Usage: ./scripts/windows-smoke.ps1 -Exe target/release/profileport.exe
+# Usage: ./scripts/windows-smoke.ps1 -Exe target/release/profileport-cli.exe
 
 param([Parameter(Mandatory = $true)] [string] $Exe)
 
@@ -50,7 +50,7 @@ function Invoke-PP([string[]] $Arguments, [int] $TimeoutSec = 180) {
     $trace = @($stderr -split "`r?`n" | Where-Object { $_ -like '`[trace`]*' })
     $other = @($stderr -split "`r?`n" | Where-Object { $_ -notlike '`[trace`]*' -and $_ -ne '' })
     if (-not $finished) {
-        Write-Host "  !! profileport $($Arguments[0]) did not finish within $TimeoutSec s. Last trace lines:"
+        Write-Host "  !! profileport-cli $($Arguments[0]) did not finish within $TimeoutSec s. Last trace lines:"
         $trace | Select-Object -Last 25 | ForEach-Object { Write-Host "     $_" }
         Write-Host "  !! stdout so far:"
         Write-Host (Mask $stdout)
@@ -109,6 +109,16 @@ New-Item -ItemType Junction -Path "$src\AppData\Local\Application Data" -Target 
 $lock = [IO.File]::Open("$src\Documents\mailbox.pst", 'Create', 'ReadWrite', 'None')
 $lock.Write([byte[]](1..100), 0, 100)
 $lock.Flush()
+
+Write-Host '== Sanity: is this the CLI binary?'
+$ver = Invoke-PP @('--version') -TimeoutSec 30
+Write-Host $ver.Out
+Check ((-not $ver.TimedOut) -and $ver.Out -match '^profileport-cli \d') 'CLI binary answers --version'
+if ($ver.TimedOut) {
+    Write-Host 'The executable did not answer --version; is it the GUI? Stopping.'
+    $lock.Close()
+    exit 1
+}
 
 Write-Host '== Export'
 $r = Invoke-PP @('export', $src, '--drive', $drive, '--ticket', '1001', '--computer', 'SMOKE', '--no-confirm')

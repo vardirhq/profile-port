@@ -38,10 +38,10 @@ jobs:
         run: cargo build --release -p profileport-cli -p profileport-desktop
       - name: Windows smoke test (junctions, long paths, locked files, attributes, ADS)
         shell: pwsh
-        run: ./scripts/windows-smoke.ps1 -Exe target/release/profileport.exe
+        run: ./scripts/windows-smoke.ps1 -Exe target/release/profileport-cli.exe
       - uses: actions/upload-artifact@v4
         with:
           name: profileport-windows-x64
           path: |
-            target/release/profileport.exe
+            target/release/profileport-cli.exe
             target/release/ProfilePort.exe

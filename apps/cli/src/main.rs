@@ -1,4 +1,4 @@
-//! `profileport` — command-line front end to the migration engine.
+//! `profileport-cli` — command-line front end to the migration engine.
 //!
 //! Exit codes: 0 = complete, 1 = finished with issues to review, 2 = failed.
 
@@ -12,7 +12,7 @@ use profileport_engine::package::{self, PackageReader, PackageState, SkipReason,
 use profileport_engine::*;
 
 #[derive(Parser)]
-#[command(name = "profileport", version, about = "Move a Windows user's files between PCs via a USB drive")]
+#[command(name = "profileport-cli", version, about = "Move a Windows user's files between PCs via a USB drive")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -265,7 +265,7 @@ fn run_verify(package_dir: &Path, code: Option<String>) -> Res {
     bar.finish();
     println!("\n  {} files ({}) decrypted and matched their hashes", r.files, human_bytes(r.bytes));
     if !r.complete {
-        println!("⚠ This backup was interrupted and is incomplete. Run `profileport resume`.");
+        println!("⚠ This backup was interrupted and is incomplete. Run `profileport-cli resume`.");
     }
     print_list("Incomplete when the backup stopped", &r.incomplete_files);
     print_failures("DAMAGED", &r.failed);

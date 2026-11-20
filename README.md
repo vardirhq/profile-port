@@ -25,7 +25,7 @@ why Slint rather than Tauri.
 ```text
 crates/package/        encrypted transfer package format (docs/package-format.md)
 crates/engine/         export / resume / verify / restore engine
-apps/cli/              `profileport` command-line tool
+apps/cli/              `profileport-cli` command-line tool
 apps/desktop/          Slint desktop app (prototype)
   ui/theme.slint       design tokens (colours, type, spacing, motion)
   ui/components.slint  reusable components
@@ -43,15 +43,19 @@ scripts/windows-smoke.ps1  end-to-end test on real Windows (run in CI)
 ## Using the CLI
 
 ```text
-profileport export C:\Users\anna --drive E:\ --ticket 48231
+profileport-cli export C:\Users\anna --drive E:\ --ticket 48231
     Shows the transfer code, asks for it to be typed back, then copies.
     Write the code on the device tag, not in the ticket system.
 
-profileport list --drive E:\                  backups on the drive (no code needed)
-profileport resume  <package-folder>         continue after an interruption
-profileport verify  <package-folder>         decrypt and hash-check everything
-profileport restore <package-folder> --to C:\Users\anna.smith [--keep-both]
+profileport-cli list --drive E:\              backups on the drive (no code needed)
+profileport-cli resume  <package-folder>         continue after an interruption
+profileport-cli verify  <package-folder>         decrypt and hash-check everything
+profileport-cli restore <package-folder> --to C:\Users\anna.smith [--keep-both]
 ```
+
+The desktop app is `ProfilePort.exe`; the CLI is deliberately named
+`profileport-cli.exe`, because Windows file names are case-insensitive and
+the two would otherwise overwrite each other in the build folder.
 
 The code is prompted for when `--code` is omitted, which keeps it out of
 shell history. Exit codes: `0` complete, `1` finished with items to review,
