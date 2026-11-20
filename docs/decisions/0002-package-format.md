@@ -31,7 +31,8 @@ Copy files as-is under `transfers/<id>/files/…`, with a manifest alongside.
 - ✅ Browsable in Explorer; recoverable without ProfilePort.
 - ❌ FAT32 4 GB limit; metadata lost; no confidentiality at rest.
 - ❌ "Prepare for next customer" can only delete, and on flash, deleting does
-  not make data unrecoverable.
+  not make data unrecoverable — on a shared store drive, every past customer
+  stays potentially recoverable.
 
 ### B. Chunked, encrypted store (recommended)
 
@@ -63,29 +64,73 @@ transfers/<package-id>/
 Middle ground; leaks file count, sizes and (unless names are encrypted) the
 directory structure, and still hits the FAT32 limit. Not recommended.
 
-## Key management — the important subtlety
+## Usage context and threat model
+
+ProfilePort is used **in-store**, between customers' computers. The USB drive
+belongs to the store and is never handed to a customer. Typically the same
+technician runs export and restore, often the same day, and the source PC is
+usually still on the bench.
+
+So the main risks are:
+
+1. **A lost or stolen store drive** exposing several customers at once (one
+   drive holds many jobs over its life).
+2. **Leftover data** from earlier customers remaining recoverable on flash.
+3. **Casual access** by other staff to customer data not their job.
+
+Because the drive is shared and long-lived, encryption at rest matters *more*
+than for a single-customer drive.
+
+## Key management
 
 Crypto-erase means "destroy the key and the ciphertext is useless". But if the
 package key is stored **on the same flash drive**, deleting it has the same
 problem as deleting the data: wear-levelling means the old key block may
-survive. The key must therefore be protected by something **not stored on
-the drive**:
+survive. The key must be protected by something **not stored on the drive**,
+and **specific to the job** — a store-wide PIN protects a lost drive but
+cannot erase past customers, because the PIN never changes and any surviving
+wrapped key still opens with it.
 
-- **Recommended:** the package key is wrapped (Argon2id → key-encryption key)
-  with a short **transfer code** generated at backup time, shown to the
-  technician and printed on the customer's receipt, and never written to the
-  drive. Restore requires the code. Once the code is discarded, the package
-  is unreadable even if every deleted block is recovered.
-- Optional: a technician master key (stored on the technician's workstation,
-  not the stick) as a second wrap, for shops that need recovery if the code
-  is lost.
+**Proposed:**
 
-With this, "Prepare for next customer" is simply *delete the packages*, and it
-is honest to describe it as making previous customer data inaccessible.
+- Each package has a random key, wrapped (Argon2id → key-encryption key) with
+  a short **transfer code** generated at the end of export.
+- The technician writes the code on the **job ticket / work order**. It is
+  never written to the drive. Restore asks for it.
+- When the job is closed and the code is no longer retained, that customer's
+  data is unreadable even if deleted blocks are recovered. The erasure
+  guarantee therefore depends on the store's **ticket-retention policy** for
+  codes. Document this; don't hide it.
+- **Optional store master key** (kept on the store's workstation, not the
+  drive) as a second wrap, for jobs where a redo is impossible — chiefly
+  recovery from a failing drive. Off by default; enabling it means past
+  packages are only as erased as the master key is protected.
+- A lost code otherwise just means redoing the backup from the source PC.
+
+## Plaintext labels
+
+The encrypted manifest hides names, so the dashboard cannot show
+"j.miller on DESKTOP-4KQ7F2" without the code. Storing that in plaintext
+would put customer-identifying data on the drive.
+
+**Proposed:** packages carry a plaintext **ticket number** (entered at
+export), date, size and status only. Profile and computer names appear only
+after the code is entered. Ticket numbers are how technicians already match
+jobs, and they identify no one without the store's own system.
+
+## Lifecycle
+
+- After a **verified** restore, the final step asks: "Delete this backup from
+  the drive now?" (a prompt, not automatic deletion).
+- Packages older than a configurable age (e.g. 14 days) are flagged on the
+  dashboard for cleanup.
+- "Prepare for next customer" deletes selected packages. With per-job codes
+  this honestly makes their data inaccessible once the codes are discarded.
 
 ## Decision (proposed)
 
-Option B with transfer-code key wrapping, from Phase 1.
+Option B with per-package keys wrapped by a transfer code recorded on the
+job ticket, from Phase 1.
 
 ## Consequences
 
@@ -95,5 +140,8 @@ Option B with transfer-code key wrapping, from Phase 1.
   [0003](0003-copy-engine.md).
 - The format must be versioned and documented (`docs/package-format.md`)
   before the first release, with a stand-alone extractor.
-- A lost transfer code means a lost backup (unless the optional master key is
-  used). The UI must make this unmistakable.
+- A lost transfer code means redoing the backup (or using the optional master
+  key). The UI must make this unmistakable before the source PC is released.
+- The dashboard's backup list is keyed by ticket number, not by user or PC
+  name (the current prototype shows names and needs updating).
+- Real-world erasure depends on the store's ticket-retention policy for codes.
