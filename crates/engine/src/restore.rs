@@ -228,7 +228,7 @@ pub fn restore(
 impl Ctx<'_> {
     fn norm(&self, p: &Path) -> String {
         let s = p.to_string_lossy().into_owned();
-        if self.opts.name_rules.case_insensitive() {
+        if self.opts.name_rules.case_insensitive() || cfg!(windows) {
             s.to_lowercase()
         } else {
             s
@@ -244,7 +244,21 @@ impl Ctx<'_> {
             self.used_folders.insert(kf);
         }
         let rules = self.opts.name_rules;
-        let adapted: Vec<String> = located.rest.iter().map(|c| rules.adapt(c).into_owned()).collect();
+        let adapted: Vec<String> = located
+            .rest
+            .iter()
+            .map(|c| {
+                let name = rules.adapt(c);
+                // Defence in depth: on Windows, `\` and `:` are structural
+                // whatever rules the caller asked for, so Windows rules
+                // always apply on top.
+                if cfg!(windows) {
+                    NameRules::Windows.adapt(&name).into_owned()
+                } else {
+                    name.into_owned()
+                }
+            })
+            .collect();
         let renamed = (adapted.iter().zip(&located.rest).any(|(a, o)| a != o)).then_some(RenameReason::NotAllowedHere);
         let (name, parents) = match adapted.split_last() {
             Some((n, p)) => (n.clone(), p.to_vec()),

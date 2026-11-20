@@ -170,14 +170,23 @@ fn linux_case_twins_survive_on_a_mac() {
     let r = restore(&reader, &dst, &opts, &mut |_| {}).unwrap();
     assert!(r.failed.is_empty(), "{r:#?}");
     let d = dst.join("Documents");
-    // Mac allows these names as they are…
-    assert_eq!(read(d.join("notes: draft?.txt")), "notes");
-    assert_eq!(read(d.join("CON")), "con");
-    // …but Report.txt and report.txt would be one file.
+    // Case twins are kept on any case-insensitive target.
     assert_eq!(read(d.join("Report.txt")), "upper");
     assert_eq!(read(d.join("report (restored).txt")), "lower");
-    let renamed: Vec<_> = r.renamed.iter().map(|(p, _, why)| (p.as_str(), *why)).collect();
-    assert_eq!(renamed, [("Documents/report.txt", RenameReason::CaseCollision)]);
+    assert!(r.renamed.iter().any(|(p, _, why)| p == "Documents/report.txt" && *why == RenameReason::CaseCollision));
+    if cfg!(windows) {
+        // Running on Windows, Windows rules always apply on top: Mac rules
+        // can't make `\` a separator or `:` a stream here.
+        assert_eq!(read(d.join("notes_ draft_.txt")), "notes");
+        assert_eq!(read(d.join("a_b")), "backslash");
+    } else {
+        // On a Mac these names are fine as they are.
+        assert_eq!(read(d.join("notes: draft?.txt")), "notes");
+        assert_eq!(read(d.join("CON")), "con");
+        assert_eq!(read(d.join("a\\b")), "backslash");
+        let renamed: Vec<_> = r.renamed.iter().map(|(p, _, why)| (p.as_str(), *why)).collect();
+        assert_eq!(renamed, [("Documents/report.txt", RenameReason::CaseCollision)]);
+    }
 }
 
 #[test]
