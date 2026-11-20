@@ -1,7 +1,7 @@
 # End-to-end smoke test of the ProfilePort CLI on real Windows.
 #
 # Builds a test profile containing the things that make Windows migrations
-# hard (see docs/windows-gotchas.md), exports it, restores it to a different
+# hard (see docs/platform-gotchas.md), exports it, restores it to a different
 # username and checks the result.
 #
 #   PASS  works
@@ -120,6 +120,12 @@ if ($ver.TimedOut) {
     exit 1
 }
 
+Write-Host '== Profiles on this PC'
+$prof = Invoke-PP @('profiles') -TimeoutSec 60
+Write-Host $prof.Out
+Check ($prof.Out -match '\(you\)') 'current user profile is listed'
+Check ($prof.Out -match 'Documents\s+\S') "current user's Documents folder is resolved"
+
 Write-Host '== Export'
 $r = Invoke-PP @('export', $src, '--drive', $drive, '--ticket', '1001', '--computer', 'SMOKE', '--no-confirm')
 $lock.Close()
@@ -139,6 +145,7 @@ Check ($exportExit -eq 1) 'export exits 1 (finished with issues) because of the 
 Check ($out -match 'mailbox\.pst\s+\(in use by another program') 'locked file is reported as in use'
 Check ($out -match '2 link\(s\) recorded, not followed') 'junctions are recorded, not followed (no loop)'
 Check ($out -match '1 cache/temp location') 'temp folder excluded by rule'
+Check ($out -match '1 file stream\(s\) stored') 'Mark of the Web stream captured'
 
 $pkg = (Get-ChildItem (Join-Path $drive 'ProfilePort\transfers') -Directory | Select-Object -First 1).FullName
 
@@ -170,10 +177,10 @@ Check ($leftovers.Count -eq 0) 'no temporary files left behind'
 Check ([IO.File]::GetLastWriteTimeUtc($readonly) -eq [IO.File]::GetLastWriteTimeUtc("$dst\Documents\readonly.txt")) 'modified time preserved'
 Check (([IO.File]::GetAttributes("$dst\Documents\readonly.txt") -band [IO.FileAttributes]::ReadOnly) -ne 0) 'read-only attribute preserved'
 
-Gap (([IO.File]::GetAttributes("$dst\Documents\hidden.txt") -band [IO.FileAttributes]::Hidden) -ne 0) 'hidden attribute preserved'
+Check (([IO.File]::GetAttributes("$dst\Documents\hidden.txt") -band [IO.FileAttributes]::Hidden) -ne 0) 'hidden attribute preserved'
 $stream = Get-Item -LiteralPath "$dst\Documents\downloaded.pdf" -Stream Zone.Identifier -ErrorAction SilentlyContinue
-Gap ($null -ne $stream) 'Mark of the Web (alternate data stream) preserved'
-Gap ([IO.File]::GetCreationTimeUtc("$src\Documents\report.txt") -eq [IO.File]::GetCreationTimeUtc("$dst\Documents\report.txt")) 'creation time preserved'
+Check ($null -ne $stream) 'Mark of the Web (alternate data stream) preserved'
+Check ([IO.File]::GetCreationTimeUtc("$src\Documents\report.txt") -eq [IO.File]::GetCreationTimeUtc("$dst\Documents\report.txt")) 'creation time preserved'
 
 Write-Host '== Restore again (as after an interrupted restore)'
 $again = (Invoke-PP @('restore', $pkg, '--to', $dst, '--code', $code)).Out

@@ -56,10 +56,27 @@ pub struct FileEntry {
 
 #[derive(Debug, Clone)]
 pub enum Entry {
-    Dir { path: String, meta: Meta },
+    Dir {
+        path: String,
+        meta: Meta,
+    },
     File(FileEntry),
-    Link { path: String, target: String, meta: Meta },
-    Skipped { path: String, reason: SkipReason, detail: String },
+    Link {
+        path: String,
+        target: String,
+        meta: Meta,
+    },
+    Skipped {
+        path: String,
+        reason: SkipReason,
+        detail: String,
+    },
+    /// Alternate data stream belonging to the file at `path`.
+    AltStream {
+        path: String,
+        name: String,
+        data: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -106,6 +123,7 @@ impl PackageReader {
                 Record::Dir { path, meta } => slots.push(Some(Entry::Dir { path, meta })),
                 Record::Link { path, target, meta } => slots.push(Some(Entry::Link { path, target, meta })),
                 Record::Skipped { path, reason, detail } => slots.push(Some(Entry::Skipped { path, reason, detail })),
+                Record::AltStream { path, name, data } => slots.push(Some(Entry::AltStream { path, name, data })),
                 Record::FileStart { id, path, meta, .. } => {
                     open_files.insert(id, slots.len());
                     slots.push(Some(Entry::File(FileEntry {

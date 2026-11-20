@@ -20,6 +20,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// List the user profiles on this computer and their standard folders
+    Profiles,
     /// List the backups on a ProfilePort drive (no code needed)
     List {
         /// Root of the USB drive, e.g. E:\
@@ -74,20 +76,25 @@ enum Cmd {
         /// Skip reading back restored files to verify them
         #[arg(long)]
         no_verify: bool,
+        /// Allow restoring into folders synced to OneDrive or similar (this
+        /// uploads the files). Asked interactively when omitted.
+        #[arg(long)]
+        allow_cloud_folders: bool,
     },
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.cmd {
+        Cmd::Profiles => profiles(),
         Cmd::List { drive } => list(&drive),
         Cmd::Export { source, drive, ticket, computer, profile, no_confirm } => {
             run_export(&source, &drive, &ticket, computer, profile, no_confirm)
         }
         Cmd::Resume { package, code } => run_resume(&package, code),
         Cmd::Verify { package, code } => run_verify(&package, code),
-        Cmd::Restore { package, to, code, keep_both, no_verify } => {
-            run_restore(&package, &to, code, keep_both, no_verify)
+        Cmd::Restore { package, to, code, keep_both, no_verify, allow_cloud_folders } => {
+            run_restore(&package, &to, code, keep_both, no_verify, allow_cloud_folders)
         }
     };
     match result {
@@ -106,6 +113,24 @@ enum Outcome {
 }
 
 type Res = Result<Outcome, Box<dyn std::error::Error>>;
+
+// ---------------------------------------------------------------- profiles
+
+fn profiles() -> Res {
+    let list = system::list_profiles();
+    if list.is_empty() {
+        println!("No user profiles found.");
+        return Ok(Outcome::Clean);
+    }
+    for p in list {
+        println!("{}{}  {}", p.name, if p.current { "  (you)" } else { "" }, p.path.display());
+        for (kf, path) in system::known_folders(&p.path) {
+            let cloud = if is_cloud_synced(&path) { "  [cloud-synced]" } else { "" };
+            println!("    {:<10} {}{}", format!("{kf:?}"), path.display(), cloud);
+        }
+    }
+    Ok(Outcome::Clean)
+}
 
 // ---------------------------------------------------------------- list
 
@@ -238,6 +263,12 @@ fn print_export_report(r: &ExportReport) {
     if !r.links.is_empty() {
         println!("  {} link(s) recorded, not followed", r.links.len());
     }
+    if r.alt_streams > 0 {
+        println!("  {} file stream(s) stored (e.g. \"downloaded from the internet\" markers)", r.alt_streams);
+    }
+    for e in &r.known_folders {
+        println!("  {:<10} {}", format!("{:?}", e.folder), e.source_path);
+    }
     print_skips("Not copied", &r.skipped);
     print_list("Changed while being copied (copied anyway; check these)", &r.changed);
 }
@@ -274,7 +305,14 @@ fn run_verify(package_dir: &Path, code: Option<String>) -> Res {
 
 // ---------------------------------------------------------------- restore
 
-fn run_restore(package_dir: &Path, to: &Path, code: Option<String>, keep_both: bool, no_verify: bool) -> Res {
+fn run_restore(
+    package_dir: &Path,
+    to: &Path,
+    code: Option<String>,
+    keep_both: bool,
+    no_verify: bool,
+    allow_cloud_folders: bool,
+) -> Res {
     let info = package::read_info(package_dir)?;
     let code = get_code(code, &info.header.ticket)?;
     let reader = PackageReader::open(package_dir, &code)?;
@@ -283,9 +321,27 @@ fn run_restore(package_dir: &Path, to: &Path, code: Option<String>, keep_both: b
     if !m.complete {
         println!("⚠ This backup is incomplete (it was interrupted). Restoring what it contains.");
     }
+    let target_folders = system::known_folders(to);
+    let cloud: Vec<String> = target_folders
+        .iter()
+        .filter(|(_, p)| is_cloud_synced(p))
+        .map(|(k, p)| format!("{k:?}: {}", p.display()))
+        .collect();
+    if !cloud.is_empty() && !allow_cloud_folders {
+        print_list("These folders on this PC are synced to the cloud; files restored there will be uploaded", &cloud);
+        let ok = io::stdin().is_terminal()
+            && prompt("\nRestore into them anyway? [y/N] ")?.is_some_and(|a| a.trim().eq_ignore_ascii_case("y"));
+        if !ok {
+            return Err(
+                "restore cancelled: target folders are cloud-synced (use --allow-cloud-folders to proceed)".into()
+            );
+        }
+    }
     let opts = RestoreOptions {
         on_conflict: if keep_both { ConflictPolicy::KeepBoth } else { ConflictPolicy::Skip },
         verify: !no_verify,
+        known_folders: Some(target_folders),
+        ..Default::default()
     };
     let mut bar = ProgressLine::new();
     let r = restore(&reader, to, &opts, &mut |p| bar.update(p))?;
@@ -301,6 +357,30 @@ fn run_restore(package_dir: &Path, to: &Path, code: Option<String>, keep_both: b
     if r.already_present > 0 {
         println!("  {} files were already there with identical content", r.already_present);
     }
+    if !r.source_os.is_empty() && r.source_os != system::os_name() {
+        println!("  Backup made on {}, restored on {}", r.source_os, system::os_name());
+    }
+    for (kf, path) in &r.folders_used {
+        println!("  {:<10} → {}", format!("{kf:?}"), path.display());
+    }
+    if r.streams_restored > 0 {
+        println!("  {} \"downloaded from the internet\" markers and other file streams restored", r.streams_restored);
+    }
+    if r.streams_not_applicable > 0 {
+        println!("  {} Windows-only file streams not applicable on this system", r.streams_not_applicable);
+    }
+    let renamed: Vec<String> = r
+        .renamed
+        .iter()
+        .map(|(p, n, why)| {
+            let why = match why {
+                RenameReason::NotAllowedHere => "name not allowed on this system",
+                RenameReason::CaseCollision => "same name as another file apart from letter case",
+            };
+            format!("{p}  → {n}  ({why})")
+        })
+        .collect();
+    print_list("Renamed", &renamed);
     let conflicts: Vec<String> = r
         .conflicts
         .iter()

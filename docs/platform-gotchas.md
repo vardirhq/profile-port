@@ -1,4 +1,4 @@
-# Windows gotchas
+# Platform gotchas
 
 Platform behaviours the engine must handle explicitly. Each one turns into a
 test fixture (see the proposal's testing strategy) and, where relevant, a
@@ -73,3 +73,39 @@ distinct line in the transfer report.
 - **Sleep and power.** Long transfers on laptops: request
   `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)` during
   transfers so the PC doesn't sleep mid-copy.
+
+## Moving between operating systems
+
+See [ADR 0006](decisions/0006-cross-platform-restore.md).
+
+- **Names.** Linux allows `: ? * \ " < > |`, trailing dots, device names
+  (`CON`) and names differing only by case. Restoring to Windows adapts them
+  (`NameRules::Windows`) and reports each rename; case twins on Windows or
+  macOS become `name (restored).ext`.
+- **Unicode normalisation.** macOS file systems treat `é` (one code
+  point) and `e` + combining accent as the same name; Linux does not. Two
+  such Linux files would collide on a Mac. Not handled yet (rare).
+- **AppData** is restored as files on Linux/macOS but no program there
+  reads it. Firefox and Thunderbird profiles are portable and are
+  candidates for migration adapters.
+
+## macOS
+
+- **Profiles** are the folders in `/Users` (except `Shared` and `Guest`).
+  People live in Directory Services, not `/etc/passwd`.
+- **Standard folders** have fixed English names on disk (`Documents`,
+  `Movies`…). Finder shows them translated via `.localized`, so never
+  match on the displayed name.
+- **Privacy protection (TCC).** Without *Full Disk Access* for the app or
+  terminal running ProfilePort, parts of `~/Library` (Mail, Messages,
+  Safari) and sometimes Desktop/Documents/Downloads cannot be read. They
+  are reported as *access denied*, not silently missed; grant Full Disk
+  Access before exporting.
+- **iCloud Drive "Desktop & Documents".** When enabled, `~/Desktop` and
+  `~/Documents` keep their paths but are synced, and files may be
+  cloud-only ("optimised storage"). Paths under
+  `~/Library/Mobile Documents` are detected as cloud-synced; the
+  Desktop & Documents setting itself is not detected yet.
+- **Extended attributes** (`com.apple.quarantine`, the macOS
+  "downloaded from the internet" marker, and Finder tags) are not carried
+  yet.

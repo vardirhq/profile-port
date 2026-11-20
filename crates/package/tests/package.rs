@@ -22,6 +22,7 @@ fn begin() -> BeginInfo {
         profile: "anna".into(),
         started_unix: 0,
         tool_version: "test".into(),
+        ..Default::default()
     }
 }
 
@@ -352,4 +353,26 @@ fn resume_discards_uncommitted_pack_data() {
     let reader = PackageReader::open(&dir, &code).unwrap();
     let m = reader.manifest().unwrap();
     assert_eq!(read_all(&reader, files_of(&m)[0]), big);
+}
+
+#[test]
+fn alt_streams_roundtrip_and_are_validated() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("pkg");
+    let (mut w, code) = PackageWriter::create(&dir, "1", begin(), opts()).unwrap();
+    w.add_file("a.pdf", Meta::default(), 3, &mut Cursor::new(b"pdf"), &mut unchanged()).unwrap();
+    let motw = b"[ZoneTransfer]\r\nZoneId=3\r\n";
+    w.add_alt_stream("a.pdf", "Zone.Identifier", motw).unwrap();
+    assert!(w.add_alt_stream("a.pdf", "..\\evil", b"x").is_err());
+    assert!(w.add_alt_stream("a.pdf", "big", &vec![0; PackageWriter::MAX_ALT_STREAM + 1]).is_err());
+    w.finish().unwrap();
+    let m = PackageReader::open(&dir, &code).unwrap().manifest().unwrap();
+    let streams: Vec<_> = m
+        .entries
+        .iter()
+        .filter_map(|e| if let Entry::AltStream { path, name, data } = e { Some((path, name, data)) } else { None })
+        .collect();
+    assert_eq!(streams.len(), 1);
+    assert_eq!((streams[0].0.as_str(), streams[0].1.as_str()), ("a.pdf", "Zone.Identifier"));
+    assert_eq!(streams[0].2.as_slice(), motw);
 }

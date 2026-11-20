@@ -93,7 +93,7 @@ Any other failure means the manifest is corrupt.
 
 | Record | Meaning |
 |---|---|
-| `Begin` {source_root, computer, profile, started_unix, tool_version} | Always first |
+| `Begin` {source_root, computer, profile, started_unix, tool_version, source_os, known_folders} | Always first. `source_os` is `windows`, `linux`, `macos`…; `known_folders` lists {folder, path, source_path}, see below. Both default to empty when absent |
 | `Dir` {path, meta} | A folder |
 | `FileStart` {id, path, meta, size} | A file begins; `size` is the size at start |
 | `Chunks` {id, chunks: [ChunkRef]} | Further chunks of file `id`, in order |
@@ -101,6 +101,7 @@ Any other failure means the manifest is corrupt.
 | `FileAbort` {id} | Reading the source failed; discard file `id` |
 | `Link` {path, target, meta} | A symlink or junction, recorded but not followed |
 | `Skipped` {path, reason, detail} | Not copied; `reason` is one of Excluded, PermissionDenied, Locked, Vanished, InvalidName, CloudOnly, ReadError |
+| `AltStream` {path, name, data} | An NTFS alternate data stream (≤ 64 KiB, e.g. `Zone.Identifier`) of the file at `path`, stored inline |
 | `End` {finished_unix} | Export finished. Without it the package is incomplete |
 
 A file is in the package only if its `FileStart` is followed by a
@@ -113,9 +114,38 @@ Unix epoch, `readonly`, `win_attributes`: optional u32}.
 
 Relative, `/`-separated, UTF-8. Readers **must** reject (and restore
 nothing from) a package containing a path that is empty, starts with `/`,
-or has a component that is empty, `.` or `..`, or that contains `\`, `:`
-or a control character. `Skipped` paths are informational and are never
-restored.
+or has a component that is empty, `.` or `..`, or that contains a control
+character. `Skipped` paths are informational and are never restored.
+
+Components may contain characters that are legal on the source system
+but not on the target: `:` and `\` are ordinary characters in Linux file
+names. A reader **must** adapt every component to the target's rules
+before using it as a path. On Windows that means replacing
+`< > : " | ? * \`, appending `_` after a trailing dot or space, and
+prefixing `_` to device names (`CON`, `NUL`, `COM1`, …). This is not
+cosmetic: unadapted, `\` would act as a separator and `:` as a
+drive or stream designator.
+
+Stream names (`AltStream.name`) must be a single plain name: no
+`: \ / < > " | ? *` or control characters.
+
+### Known folders
+
+`Begin.known_folders` says where the source kept its standard folders
+(`Desktop`, `Documents`, `Downloads`, `Music`, `Pictures`, `Videos`,
+`Templates`, `Public`), as package paths:
+
+- a folder inside the profile keeps its relative path, e.g.
+  `OneDrive/Documents` when Documents was redirected into OneDrive;
+- a folder outside the profile (redirected to another drive) is stored
+  under a top-level `@Name` directory, e.g. `@Music`. `source_path` is its
+  absolute path on the source, used to resume the export.
+
+On restore, a path under a known folder goes under the *target's* folder
+of the same kind (e.g. `~/Dokumenter` on a Norwegian Linux desktop),
+matching the prefix case-insensitively when `source_os` is `windows` or
+`macos`. Other paths stay relative to the profile, and an unmapped `@Name`
+becomes `Name`.
 
 ## packs/NNNNNN.pack (encrypted)
 

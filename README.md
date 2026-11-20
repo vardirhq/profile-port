@@ -7,8 +7,12 @@ anything that couldn't be copied.
 
 > **Status:** early development.
 > - **Engine + CLI:** export, resume, verify and restore work end to end,
->   with an encrypted package format. Not yet Windows-specific: no profile
->   discovery, VSS, Windows attribute/ADS restore or `SeBackupPrivilege` yet.
+>   with an encrypted package format. Windows profile discovery, standard
+>   (known) folders, hidden/system attributes, creation times and the
+>   "downloaded from the internet" marker are handled. Backups move between
+>   Windows, Linux and macOS in any direction (CLI, tested in CI on all
+>   three). Not yet: `SeBackupPrivilege` for other users'
+>   files, VSS, loading offline registry hives, cache-bypassing verification.
 > - **Desktop UI:** dashboard prototype with sample data, not yet wired to
 >   the engine.
 
@@ -35,7 +39,7 @@ apps/desktop/          Slint desktop app (prototype)
 docs/decisions/        architecture decision records
 docs/design/ui.md      visual system and UI workflow
 docs/package-format.md  on-disk format specification
-docs/windows-gotchas.md platform behaviours the engine must handle
+docs/platform-gotchas.md platform behaviours the engine must handle
 scripts/screenshot.sh   headless screenshots of the UI (Linux)
 scripts/windows-smoke.ps1  end-to-end test on real Windows (run in CI)
 ```
@@ -47,6 +51,7 @@ profileport-cli export C:\Users\anna --drive E:\ --ticket 48231
     Shows the transfer code, asks for it to be typed back, then copies.
     Write the code on the device tag, not in the ticket system.
 
+profileport-cli profiles                      user profiles on this PC and their standard folders
 profileport-cli list --drive E:\              backups on the drive (no code needed)
 profileport-cli resume  <package-folder>         continue after an interruption
 profileport-cli verify  <package-folder>         decrypt and hash-check everything
@@ -60,6 +65,14 @@ the two would otherwise overwrite each other in the build folder.
 The code is prompted for when `--code` is omitted, which keeps it out of
 shell history. Exit codes: `0` complete, `1` finished with items to review,
 `2` failed.
+
+Restore puts standard folders where the *target* keeps them (Documents
+redirected to OneDrive on the old PC goes into Documents on the new one; a
+Windows backup restored on Linux goes into the XDG folders, translated names
+included), and adapts file names the target can't use, reporting each
+rename. If a target folder is synced to OneDrive or similar, restore asks
+first, because restoring there uploads the files. See
+[ADR 0006](docs/decisions/0006-cross-platform-restore.md).
 
 Restore never overwrites or deletes anything. Existing files are left alone
 and reported (or, with `--keep-both`, restored as `name (restored).ext`).
@@ -85,8 +98,9 @@ this on every push and attaches both `.exe` files to the run as an artifact.
 | Where | What |
 |---|---|
 | Unit and integration tests (Linux and Windows CI) | Transfer codes, encryption and tamper detection, plaintext-leak check, torn writes, crash-and-resume (including repeated crashes and source files changed meanwhile), restore safety (no overwrite, no following destination links, path validation), idempotent restore |
+| `scripts/unix-smoke.sh` (Linux and macOS CI) | The real CLI end to end: export, list, verify, restore to another user, re-restore; names with `:`, Unicode, symlinks, caches, timestamps |
 | `scripts/windows-smoke.ps1` (Windows CI) | Junctions and loops, paths over 260 characters, a file locked by another process, read-only, hidden, Mark of the Web, timestamps, restoring to a different username. Known gaps are listed, not hidden |
-| Not yet tested | Real Windows 10/11 *client* PCs, real USB sticks being unplugged, OneDrive placeholders, BitLocker, ARM64, the GUI on Windows |
+| Not yet tested | Real Windows 10/11 *client* PCs and Macs, real USB sticks being unplugged, OneDrive placeholders, iCloud, BitLocker, ARM64 Windows, the GUI on Windows |
 
 ## Key decisions
 
@@ -97,6 +111,7 @@ this on every push and attaches both `.exe` files to the run as an artifact.
 | [Native Rust copy engine, not Robocopy](docs/decisions/0003-copy-engine.md) | Accepted |
 | [Always run elevated](docs/decisions/0004-privilege-model.md) | Accepted |
 | [Locked files: avoid, then VSS; registry archived, not merged](docs/decisions/0005-locked-files-and-registry.md) | Accepted |
+| [Cross-platform restore: Windows, Linux, macOS](docs/decisions/0006-cross-platform-restore.md) | Accepted |
 
 ## Suggested build order
 

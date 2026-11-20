@@ -162,9 +162,13 @@ fn restore_never_overwrites() {
     let dst2 = s.dst.parent().unwrap().join("second");
     fs::create_dir_all(dst2.join("Documents")).unwrap();
     fs::write(dst2.join("Documents/report.docx"), b"mine").unwrap();
-    let rr =
-        restore(&reader, &dst2, &RestoreOptions { on_conflict: ConflictPolicy::KeepBoth, verify: true }, &mut |_| {})
-            .unwrap();
+    let rr = restore(
+        &reader,
+        &dst2,
+        &RestoreOptions { on_conflict: ConflictPolicy::KeepBoth, ..Default::default() },
+        &mut |_| {},
+    )
+    .unwrap();
     assert_eq!(fs::read(dst2.join("Documents/report.docx")).unwrap(), b"mine");
     assert_eq!(fs::read(dst2.join("Documents/report (restored).docx")).unwrap(), b"quarterly numbers");
     assert!(rr.failed.is_empty());
