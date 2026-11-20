@@ -26,6 +26,43 @@ function Gap([bool] $ok, [string] $what) {
     Write-Host ("  {0,-5} {1}" -f $(if ($ok) { 'PASS' } else { 'GAP' }), $what)
 }
 
+# Run the CLI with a timeout, stdin from an empty file (so a stray prompt
+# gets end-of-input instead of waiting forever) and trace output enabled.
+# On a timeout the process tree is killed and the last trace lines shown.
+function Invoke-PP([string[]] $Arguments, [int] $TimeoutSec = 180) {
+    $id = [guid]::NewGuid().ToString('N')
+    $outFile = Join-Path $root "$id.out"
+    $errFile = Join-Path $root "$id.err"
+    $inFile = Join-Path $root "$id.in"
+    Set-Content -Path $inFile -Value '' -NoNewline
+    $quoted = $Arguments | ForEach-Object { '"' + $_ + '"' }
+    $env:PROFILEPORT_TRACE = '1'
+    $p = Start-Process -FilePath $Exe -ArgumentList $quoted -NoNewWindow -PassThru `
+        -RedirectStandardOutput $outFile -RedirectStandardError $errFile -RedirectStandardInput $inFile
+    $null = $p.Handle # needed for ExitCode to be available later
+    $finished = $p.WaitForExit($TimeoutSec * 1000)
+    if (-not $finished) {
+        $p.Kill($true)
+        $p.WaitForExit()
+    }
+    $stdout = "$(Get-Content -Raw $outFile)"
+    $stderr = "$(Get-Content -Raw $errFile)"
+    $trace = @($stderr -split "`r?`n" | Where-Object { $_ -like '`[trace`]*' })
+    $other = @($stderr -split "`r?`n" | Where-Object { $_ -notlike '`[trace`]*' -and $_ -ne '' })
+    if (-not $finished) {
+        Write-Host "  !! profileport $($Arguments[0]) did not finish within $TimeoutSec s. Last trace lines:"
+        $trace | Select-Object -Last 25 | ForEach-Object { Write-Host "     $_" }
+        Write-Host "  !! stdout so far:"
+        Write-Host (Mask $stdout)
+    }
+    return [pscustomobject]@{
+        Out      = $stdout + ($other -join "`n")
+        Exit     = $(if ($finished) { $p.ExitCode } else { -1 })
+        TimedOut = -not $finished
+        Traced   = $trace.Count
+    }
+}
+
 function Mask([string] $text) {
     return [regex]::Replace($text, '[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}', '<CODE>')
 }
@@ -74,10 +111,17 @@ $lock.Write([byte[]](1..100), 0, 100)
 $lock.Flush()
 
 Write-Host '== Export'
-$out = (& $Exe export $src --drive $drive --ticket 1001 --computer SMOKE --no-confirm 2>&1 | Out-String)
-$exportExit = $LASTEXITCODE
+$r = Invoke-PP @('export', $src, '--drive', $drive, '--ticket', '1001', '--computer', 'SMOKE', '--no-confirm')
 $lock.Close()
+$out = $r.Out
+$exportExit = $r.Exit
 Write-Host (Mask $out)
+Write-Host "  ($($r.Traced) trace lines)"
+Check (-not $r.TimedOut) 'export finishes (no hang)'
+if ($r.TimedOut) {
+    Write-Host 'Export hung; skipping the remaining checks.'
+    exit 1
+}
 $code = [regex]::Match($out, '[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}').Value
 
 Check ($code -ne '') 'transfer code is shown'
@@ -89,18 +133,19 @@ Check ($out -match '1 cache/temp location') 'temp folder excluded by rule'
 $pkg = (Get-ChildItem (Join-Path $drive 'ProfilePort\transfers') -Directory | Select-Object -First 1).FullName
 
 Write-Host '== List (no code)'
-$list = (& $Exe list --drive $drive 2>&1 | Out-String)
+$list = (Invoke-PP @('list', '--drive', $drive)).Out
 Write-Host $list
 Check ($list -match '1001\s+.*partial \(1 skipped\)') 'drive listing shows ticket and partial state'
 
 Write-Host '== Verify'
-$vout = (& $Exe verify $pkg --code $code 2>&1 | Out-String)
-Write-Host (Mask $vout)
-Check ($LASTEXITCODE -eq 0) 'verify succeeds'
+$v = Invoke-PP @('verify', $pkg, '--code', $code)
+Write-Host (Mask $v.Out)
+Check ($v.Exit -eq 0) 'verify succeeds'
 
 Write-Host '== Restore to a different username'
-$rout = (& $Exe restore $pkg --to $dst --code $code 2>&1 | Out-String)
-$restoreExit = $LASTEXITCODE
+$rr = Invoke-PP @('restore', $pkg, '--to', $dst, '--code', $code)
+$rout = $rr.Out
+$restoreExit = $rr.Exit
 Write-Host (Mask $rout)
 
 Check ($restoreExit -eq 1) 'restore exits 1 because the backup has a skipped file'
@@ -121,7 +166,7 @@ Gap ($null -ne $stream) 'Mark of the Web (alternate data stream) preserved'
 Gap ([IO.File]::GetCreationTimeUtc("$src\Documents\report.txt") -eq [IO.File]::GetCreationTimeUtc("$dst\Documents\report.txt")) 'creation time preserved'
 
 Write-Host '== Restore again (as after an interrupted restore)'
-$again = (& $Exe restore $pkg --to $dst --code $code 2>&1 | Out-String)
+$again = (Invoke-PP @('restore', $pkg, '--to', $dst, '--code', $code)).Out
 Write-Host (Mask $again)
 Check ($again -match 'already there with identical content') 'second restore recognises files already in place'
 Check ($again -notmatch 'Name conflicts') 'second restore reports no conflicts'

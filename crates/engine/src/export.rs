@@ -244,6 +244,8 @@ impl<'a> Job<'a> {
                 if !self.done.contains(&child) {
                     self.w.add_dir(&child, meta_of(&meta))?;
                 }
+                self.prog.current = child.clone();
+                (self.progress)(&self.prog);
                 self.walk_dir(&path, &child)?;
             } else if ft.is_file() {
                 if self.done.contains(&child) {

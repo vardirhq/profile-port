@@ -403,6 +403,12 @@ impl ProgressLine {
     }
 
     fn update(&mut self, p: &Progress) {
+        // Diagnostic mode: every folder and file the engine visits, one per
+        // line, so a stall shows exactly where it happened.
+        if std::env::var_os("PROFILEPORT_TRACE").is_some() {
+            eprintln!("[trace] {} files · {} · {}", p.files, human_bytes(p.bytes), p.current);
+            return;
+        }
         if !io::stderr().is_terminal() || self.last.elapsed() < Duration::from_millis(150) {
             return;
         }
