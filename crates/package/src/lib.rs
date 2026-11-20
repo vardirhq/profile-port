@@ -16,6 +16,8 @@ mod writer;
 pub use code::{CodeError, TransferCode};
 pub use crypto::KdfParams;
 pub use error::{Error, Result};
-pub use format::{BeginInfo, ChunkRef, Header, Meta, PackageState, SkipReason, Status, Timestamp};
+pub use format::{
+    BeginInfo, ChunkRef, Header, KnownFolder, KnownFolderEntry, Meta, PackageState, SkipReason, Status, Timestamp,
+};
 pub use reader::{list_packages, read_info, Entry, FileEntry, Manifest, PackageInfo, PackageReader};
 pub use writer::{FileResult, PackageWriter, PartialFile, ResumeState, WriterOptions};

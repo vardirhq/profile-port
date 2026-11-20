@@ -7,18 +7,21 @@ use std::path::{Path, PathBuf};
 
 use profileport_package::format::{split_rel_path, validate_ticket};
 use profileport_package::{
-    BeginInfo, Entry, Error as PkgError, PackageReader, PackageWriter, PartialFile, SkipReason, Status, TransferCode,
-    WriterOptions,
+    BeginInfo, Entry, Error as PkgError, KnownFolder, KnownFolderEntry, PackageReader, PackageWriter, PartialFile,
+    SkipReason, Status, TransferCode, WriterOptions,
 };
 
 use crate::exclude::Exclusions;
 use crate::platform::{classify, fingerprint, is_cloud_only, meta_of};
-use crate::{native_path, Progress, SkipItem};
+use crate::{Progress, SkipItem};
 
 #[derive(Debug, Clone, Default)]
 pub struct ExportOptions {
     pub writer: WriterOptions,
     pub exclusions: Exclusions,
+    /// Where the source profile keeps its standard folders. `None` asks the
+    /// running system (see [`crate::system::known_folders`]).
+    pub known_folders: Option<Vec<(KnownFolder, PathBuf)>>,
     /// Test hook: panic after this many source bytes, imitating a crash or
     /// pulled drive (nothing after the last commit is written).
     #[doc(hidden)]
@@ -58,6 +61,10 @@ pub struct ExportReport {
     pub excluded: Vec<String>,
     /// Copied, but the file changed while it was being read.
     pub changed: Vec<String>,
+    /// Alternate data streams stored (Windows).
+    pub alt_streams: u64,
+    /// Standard folders found, as stored in the package.
+    pub known_folders: Vec<KnownFolderEntry>,
 }
 
 impl ExportReport {
@@ -73,6 +80,8 @@ impl ExportReport {
 pub struct PreparedExport {
     writer: PackageWriter,
     root: PathBuf,
+    /// Standard folders outside the profile: (package name "@X", path).
+    extra_roots: Vec<(String, PathBuf)>,
 }
 
 impl PreparedExport {
@@ -87,9 +96,8 @@ impl PreparedExport {
         opts: &ExportOptions,
         progress: &mut dyn FnMut(&Progress),
     ) -> Result<ExportReport, ExportError> {
-        let root = self.root.clone();
-        let mut job = Job::new(self.writer, root.clone(), opts, progress, HashSet::new());
-        job.walk_dir(&root, "")?;
+        let mut job = Job::new(self.writer, self.root, self.extra_roots, opts, progress, HashSet::new());
+        job.walk_all()?;
         job.finish(code)
     }
 }
@@ -115,15 +123,69 @@ pub fn prepare_export(
     fs::create_dir_all(transfers_dir).map_err(PkgError::Io)?;
     let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     let dir = transfers_dir.join(format!("{ticket}-{stamp:x}"));
+    let folders = opts.known_folders.clone().unwrap_or_else(|| crate::system::known_folders(&root));
+    let (known_folders, extra_roots) = plan_known_folders(&root, &folders);
     let begin = BeginInfo {
         source_root: root.to_string_lossy().into_owned(),
         computer: labels.computer.clone(),
         profile: labels.profile.clone(),
         started_unix: (stamp / 1_000_000_000) as i64,
         tool_version: env!("CARGO_PKG_VERSION").to_string(),
+        source_os: crate::system::os_name().to_string(),
+        known_folders,
     };
     let (writer, code) = PackageWriter::create(&dir, ticket, begin, opts.writer.clone())?;
-    Ok((PreparedExport { writer, root }, code))
+    Ok((PreparedExport { writer, root, extra_roots }, code))
+}
+
+/// Express each standard folder as a package path. Folders inside the
+/// profile keep their relative path; folders elsewhere (redirected to
+/// another drive, say) become extra roots stored as `@Name`, unless they
+/// sit inside another such folder.
+fn plan_known_folders(
+    root: &Path,
+    folders: &[(KnownFolder, PathBuf)],
+) -> (Vec<KnownFolderEntry>, Vec<(String, PathBuf)>) {
+    let mut resolved: Vec<(KnownFolder, PathBuf)> = folders
+        .iter()
+        .filter_map(|(kf, p)| Some((*kf, fs::canonicalize(p).ok()?)))
+        .filter(|(_, p)| p != root)
+        .collect();
+    // Shortest first, so an outside folder containing another is chosen as
+    // the root.
+    resolved.sort_by_key(|(_, p)| p.as_os_str().len());
+    let mut entries = Vec::new();
+    let mut extra: Vec<(String, PathBuf)> = Vec::new();
+    for (kf, abs) in resolved {
+        let path = if let Some(rel) = rel_under(root, &abs) {
+            rel
+        } else if let Some((name, rel)) = extra.iter().find_map(|(n, base)| {
+            rel_under(base, &abs).map(|r| (n.clone(), r)).or_else(|| (base == &abs).then(|| (n.clone(), String::new())))
+        }) {
+            if rel.is_empty() {
+                name
+            } else {
+                format!("{name}/{rel}")
+            }
+        } else {
+            let name = format!("@{kf:?}");
+            extra.push((name.clone(), abs.clone()));
+            name
+        };
+        if split_rel_path(&path).is_ok() {
+            entries.push(KnownFolderEntry { folder: kf, path, source_path: abs.to_string_lossy().into_owned() });
+        }
+    }
+    (entries, extra)
+}
+
+/// `abs` relative to `base` as a '/'-separated package path, if it is
+/// strictly inside it.
+fn rel_under(base: &Path, abs: &Path) -> Option<String> {
+    let rel = abs.strip_prefix(base).ok()?;
+    let parts: Option<Vec<&str>> = rel.components().map(|c| c.as_os_str().to_str()).collect();
+    let parts = parts?;
+    (!parts.is_empty()).then(|| parts.join("/"))
 }
 
 /// [`prepare_export`] followed by [`PreparedExport::run`], for callers that
@@ -153,17 +215,28 @@ pub fn resume_export(
     if !root.is_dir() {
         return Err(ExportError::SourceMissing(root));
     }
-    let mut job = Job::new(writer, root.clone(), opts, progress, state.done);
+    let extra_roots: Vec<(String, PathBuf)> = state
+        .begin
+        .known_folders
+        .iter()
+        .filter(|e| e.path.starts_with('@') && !e.path.contains('/'))
+        .map(|e| (e.path.clone(), PathBuf::from(&e.source_path)))
+        .collect();
+    if let Some((_, missing)) = extra_roots.iter().find(|(_, p)| !p.is_dir()) {
+        return Err(ExportError::SourceMissing(missing.clone()));
+    }
+    let mut job = Job::new(writer, root, extra_roots, opts, progress, state.done);
     if let Some(partial) = state.partial {
         job.resume_partial(&partial)?;
     }
-    job.walk_dir(&root, "")?;
+    job.walk_all()?;
     job.finish(code)
 }
 
 struct Job<'a> {
     w: PackageWriter,
     root: PathBuf,
+    extra_roots: Vec<(String, PathBuf)>,
     opts: &'a ExportOptions,
     progress: &'a mut dyn FnMut(&Progress),
     done: HashSet<String>,
@@ -183,12 +256,47 @@ impl<'a> Job<'a> {
     fn new(
         w: PackageWriter,
         root: PathBuf,
+        extra_roots: Vec<(String, PathBuf)>,
         opts: &'a ExportOptions,
         progress: &'a mut dyn FnMut(&Progress),
         done: HashSet<String>,
     ) -> Self {
         let prog = Progress { files: w.status().files, bytes: w.status().bytes, current: String::new() };
-        Self { w, root, opts, progress, done, prog, crash_budget: opts.crash_after_bytes }
+        Self { w, root, extra_roots, opts, progress, done, prog, crash_budget: opts.crash_after_bytes }
+    }
+
+    /// The profile, then any standard folders that live outside it.
+    fn walk_all(&mut self) -> Result<(), ExportError> {
+        let root = self.root.clone();
+        self.walk_dir(&root, "")?;
+        for (name, abs) in self.extra_roots.clone() {
+            if !self.done.contains(&name) {
+                let meta =
+                    fs::symlink_metadata(&abs).map_err(|e| ExportError::Source { path: abs.clone(), source: e })?;
+                self.w.add_dir(&name, meta_of(&meta))?;
+            }
+            self.walk_dir(&abs, &name)?;
+        }
+        Ok(())
+    }
+
+    /// Source location of a package path written by this export.
+    fn source_path(&self, rel: &str) -> Option<PathBuf> {
+        let mut comps = rel.split('/');
+        let first = comps.next()?;
+        let (mut p, rest): (PathBuf, Vec<&str>) = match self.extra_roots.iter().find(|(n, _)| n == first) {
+            Some((_, abs)) => (abs.clone(), comps.collect()),
+            None => (self.root.clone(), rel.split('/').collect()),
+        };
+        for c in rest {
+            // Package data is untrusted: never let a component act as a
+            // separator or stream name on Windows.
+            if cfg!(windows) && c.contains(['\\', ':']) {
+                return None;
+            }
+            p.push(c);
+        }
+        Some(p)
     }
 
     fn skip(&mut self, rel: &str, reason: SkipReason, detail: &str) -> Result<(), ExportError> {
@@ -278,6 +386,7 @@ impl<'a> Job<'a> {
             Ok(r) => {
                 self.prog.files += 1;
                 self.prog.bytes += r.bytes;
+                self.copy_streams(path, rel)?;
             }
             Err(PkgError::SourceRead(e)) => self.skip(rel, classify(&e), &format!("read failed: {e}"))?,
             Err(e) => return Err(e.into()),
@@ -287,8 +396,41 @@ impl<'a> Job<'a> {
         Ok(())
     }
 
+    /// Small alternate data streams (Windows), e.g. the "downloaded from
+    /// the internet" marker. File systems without streams have none.
+    #[cfg(windows)]
+    fn copy_streams(&mut self, path: &Path, rel: &str) -> Result<(), ExportError> {
+        let Ok(streams) = crate::win::alt_streams(path) else { return Ok(()) };
+        for (name, size) in streams {
+            if !profileport_package::format::valid_stream_name(&name) {
+                continue;
+            }
+            if size as usize > PackageWriter::MAX_ALT_STREAM {
+                self.w.add_skipped(
+                    &format!("{rel}:{name}"),
+                    SkipReason::ReadError,
+                    &format!("alternate data stream of {size} bytes is too large to store"),
+                )?;
+                continue;
+            }
+            match crate::win::read_stream(path, &name) {
+                Ok(data) => self.w.add_alt_stream(rel, &name, &data)?,
+                Err(e) => self.w.add_skipped(&format!("{rel}:{name}"), classify(&e), &e.to_string())?,
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
+    fn copy_streams(&mut self, _: &Path, _: &str) -> Result<(), ExportError> {
+        Ok(())
+    }
+
     fn resume_partial(&mut self, p: &PartialFile) -> Result<(), ExportError> {
-        let path = native_path(&self.root, &p.path);
+        let Some(path) = self.source_path(&p.path) else {
+            self.w.abandon_partial(p)?;
+            return Ok(());
+        };
         let unchanged = matches!(
             fs::symlink_metadata(&path),
             Ok(m) if m.is_file() && m.len() == p.size && meta_of(&m).modified == p.meta.modified
@@ -317,6 +459,7 @@ impl<'a> Job<'a> {
             Ok(r) => {
                 self.prog.files += 1;
                 self.prog.bytes += r.bytes;
+                self.copy_streams(&path, &p.path)?;
             }
             Err(PkgError::SourceRead(e)) => self.w.add_skipped(&p.path, classify(&e), &format!("read failed: {e}"))?,
             Err(e) => return Err(e.into()),
@@ -346,6 +489,8 @@ fn summarize(dir: &Path, code: &TransferCode, status: Status) -> Result<ExportRe
         skipped: Vec::new(),
         excluded: Vec::new(),
         changed: Vec::new(),
+        alt_streams: 0,
+        known_folders: m.begin.known_folders.clone(),
     };
     for e in m.entries {
         match e {
@@ -360,6 +505,7 @@ fn summarize(dir: &Path, code: &TransferCode, status: Status) -> Result<ExportRe
             Entry::Link { path, target, .. } => r.links.push((path, target)),
             Entry::Skipped { path, reason: SkipReason::Excluded, .. } => r.excluded.push(path),
             Entry::Skipped { path, reason, detail } => r.skipped.push(SkipItem { path, reason, detail }),
+            Entry::AltStream { .. } => r.alt_streams += 1,
         }
     }
     Ok(r)

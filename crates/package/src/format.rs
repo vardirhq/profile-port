@@ -117,7 +117,7 @@ pub enum SkipReason {
     ReadError,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BeginInfo {
     /// Absolute path of the source root, used to resume.
     pub source_root: String,
@@ -125,6 +125,55 @@ pub struct BeginInfo {
     pub profile: String,
     pub started_unix: i64,
     pub tool_version: String,
+    /// "windows", "linux", "macos", … (empty in packages from before this
+    /// field existed).
+    #[serde(default)]
+    pub source_os: String,
+    /// Where the source system kept its standard folders, as package paths.
+    /// Restore uses this to put e.g. Documents where the *target* system
+    /// keeps Documents.
+    #[serde(default)]
+    pub known_folders: Vec<KnownFolderEntry>,
+}
+
+/// Standard per-user folders that exist, under some name, on every desktop
+/// OS. Folders without a cross-platform equivalent (Favorites, Saved Games,
+/// Contacts…) are left in place relative to the profile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum KnownFolder {
+    Desktop,
+    Documents,
+    Downloads,
+    Music,
+    Pictures,
+    Videos,
+    Templates,
+    Public,
+}
+
+impl KnownFolder {
+    pub const ALL: [KnownFolder; 8] = [
+        KnownFolder::Desktop,
+        KnownFolder::Documents,
+        KnownFolder::Downloads,
+        KnownFolder::Music,
+        KnownFolder::Pictures,
+        KnownFolder::Videos,
+        KnownFolder::Templates,
+        KnownFolder::Public,
+    ];
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KnownFolderEntry {
+    pub folder: KnownFolder,
+    /// Package path of the folder's contents: relative to the profile, or
+    /// `@Name` for a folder that was outside the profile (e.g. Documents
+    /// redirected to D:\Data).
+    pub path: String,
+    /// Absolute path on the source system (used to resume an export).
+    #[serde(default)]
+    pub source_path: String,
 }
 
 /// One manifest entry. Paths are relative, '/'-separated, and are validated
@@ -164,6 +213,14 @@ pub enum Record {
         path: String,
         reason: SkipReason,
         detail: String,
+    },
+    /// A small NTFS alternate data stream of a file (for example
+    /// `Zone.Identifier`, the "downloaded from the internet" marker),
+    /// stored inline.
+    AltStream {
+        path: String,
+        name: String,
+        data: Vec<u8>,
     },
     End {
         finished_unix: i64,
@@ -250,10 +307,15 @@ pub fn validate_ticket(ticket: &str) -> Result<()> {
 
 /// Validate a relative package path and split it into components.
 ///
-/// Rejects anything that could escape the restore root or address something
-/// other than a plain file name: absolute paths, `..`, `.`, empty
-/// components, backslashes, drive letters / stream names (`:`), and control
-/// characters.
+/// This is the *structural* check every package path must pass: no absolute
+/// paths, no `..` or `.`, no empty components, no control characters.
+///
+/// It deliberately allows characters that are legal on one OS but not
+/// another (`:` and `\\` are ordinary file-name characters on Linux).
+/// Components must therefore go through the **target system's name rules**
+/// (`profileport_engine` `NameRules`) before being used as a path on disk:
+/// on Windows, `\\` and `:` would otherwise act as a separator and a
+/// stream/drive designator.
 pub fn split_rel_path(path: &str) -> Result<Vec<&str>> {
     let bad = || Error::UnsafePath(path.to_string());
     if path.is_empty() || path.starts_with('/') {
@@ -261,11 +323,18 @@ pub fn split_rel_path(path: &str) -> Result<Vec<&str>> {
     }
     let parts: Vec<&str> = path.split('/').collect();
     for p in &parts {
-        if p.is_empty() || *p == "." || *p == ".." || p.chars().any(|c| c == '\\' || c == ':' || (c as u32) < 0x20) {
+        if p.is_empty() || *p == "." || *p == ".." || p.chars().any(|c| (c as u32) < 0x20 || c == '\u{7f}') {
             return Err(bad());
         }
     }
     Ok(parts)
+}
+
+/// Validate an alternate data stream name: a single plain name.
+pub fn valid_stream_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 255
+        && !name.chars().any(|c| matches!(c, ':' | '\\' | '/' | '<' | '>' | '"' | '|' | '?' | '*') || (c as u32) < 0x20)
 }
 
 #[cfg(test)]
@@ -274,23 +343,51 @@ mod tests {
 
     #[test]
     fn rel_path_validation() {
-        for ok in ["a", "Documents/report.docx", "Música/日本/x y.txt", ".hidden/file"] {
-            assert!(split_rel_path(ok).is_ok(), "{ok}");
-        }
-        for bad in [
-            "",
-            "/etc/passwd",
-            "../x",
-            "a/../../x",
-            "a//b",
-            "a/./b",
+        // Structurally fine. Names like "C:" or "a\\b" are legal Linux file
+        // names; on Windows they are made safe by the restore name rules.
+        for ok in [
+            "a",
+            "Documents/report.docx",
+            "Música/日本/x y.txt",
+            ".hidden/file",
+            "notes: draft.txt",
             "C:/x",
             "a\\..\\b",
-            "file.txt:stream",
-            "a/\u{0}b",
-            "a/",
         ] {
+            assert!(split_rel_path(ok).is_ok(), "{ok}");
+        }
+        for bad in ["", "/etc/passwd", "../x", "a/../../x", "a//b", "a/./b", "a/\u{0}b", "a/\u{1b}[31m", "a/"] {
             assert!(split_rel_path(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn begin_info_from_before_known_folders_still_decodes() {
+        #[derive(Serialize)]
+        struct OldBegin {
+            source_root: String,
+            computer: String,
+            profile: String,
+            started_unix: i64,
+            tool_version: String,
+        }
+        let old = OldBegin {
+            source_root: "C:/Users/a".into(),
+            computer: "PC".into(),
+            profile: "a".into(),
+            started_unix: 1,
+            tool_version: "0.1.0".into(),
+        };
+        let b: BeginInfo = from_cbor(&to_cbor(&old)).unwrap();
+        assert_eq!(b.profile, "a");
+        assert!(b.known_folders.is_empty() && b.source_os.is_empty());
+    }
+
+    #[test]
+    fn stream_names() {
+        assert!(valid_stream_name("Zone.Identifier"));
+        for bad in ["", "a:b", "..\\x", "a/b", "x*"] {
+            assert!(!valid_stream_name(bad), "{bad:?}");
         }
     }
 

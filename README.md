@@ -7,8 +7,11 @@ anything that couldn't be copied.
 
 > **Status:** early development.
 > - **Engine + CLI:** export, resume, verify and restore work end to end,
->   with an encrypted package format. Not yet Windows-specific: no profile
->   discovery, VSS, Windows attribute/ADS restore or `SeBackupPrivilege` yet.
+>   with an encrypted package format. Windows profile discovery, standard
+>   (known) folders, hidden/system attributes, creation times and the
+>   "downloaded from the internet" marker are handled; restore across
+>   Windows and Linux works. Not yet: `SeBackupPrivilege` for other users'
+>   files, VSS, loading offline registry hives, cache-bypassing verification.
 > - **Desktop UI:** dashboard prototype with sample data, not yet wired to
 >   the engine.
 
@@ -47,6 +50,7 @@ profileport-cli export C:\Users\anna --drive E:\ --ticket 48231
     Shows the transfer code, asks for it to be typed back, then copies.
     Write the code on the device tag, not in the ticket system.
 
+profileport-cli profiles                      user profiles on this PC and their standard folders
 profileport-cli list --drive E:\              backups on the drive (no code needed)
 profileport-cli resume  <package-folder>         continue after an interruption
 profileport-cli verify  <package-folder>         decrypt and hash-check everything
@@ -60,6 +64,14 @@ the two would otherwise overwrite each other in the build folder.
 The code is prompted for when `--code` is omitted, which keeps it out of
 shell history. Exit codes: `0` complete, `1` finished with items to review,
 `2` failed.
+
+Restore puts standard folders where the *target* keeps them (Documents
+redirected to OneDrive on the old PC goes into Documents on the new one; a
+Windows backup restored on Linux goes into the XDG folders, translated names
+included), and adapts file names the target can't use, reporting each
+rename. If a target folder is synced to OneDrive or similar, restore asks
+first, because restoring there uploads the files. See
+[ADR 0006](docs/decisions/0006-cross-platform-restore.md).
 
 Restore never overwrites or deletes anything. Existing files are left alone
 and reported (or, with `--keep-both`, restored as `name (restored).ext`).
@@ -97,6 +109,7 @@ this on every push and attaches both `.exe` files to the run as an artifact.
 | [Native Rust copy engine, not Robocopy](docs/decisions/0003-copy-engine.md) | Accepted |
 | [Always run elevated](docs/decisions/0004-privilege-model.md) | Accepted |
 | [Locked files: avoid, then VSS; registry archived, not merged](docs/decisions/0005-locked-files-and-registry.md) | Accepted |
+| [Cross-platform restore and standard folders](docs/decisions/0006-cross-platform-restore.md) | Proposed |
 
 ## Suggested build order
 

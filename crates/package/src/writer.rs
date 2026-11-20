@@ -248,6 +248,7 @@ impl PackageWriter {
                         status.skipped += 1;
                     }
                 }
+                Record::AltStream { .. } => {}
                 Record::End { .. } => return Err(Error::AlreadyComplete),
             }
         }
@@ -333,6 +334,18 @@ impl PackageWriter {
             self.status.skipped += 1;
         }
         self.push(Record::Skipped { path: path.to_string(), reason, detail: detail.to_string() })
+    }
+
+    /// Largest alternate data stream stored inline in the manifest.
+    pub const MAX_ALT_STREAM: usize = 64 * 1024;
+
+    /// Attach a small alternate data stream to a file already added.
+    pub fn add_alt_stream(&mut self, path: &str, name: &str, data: &[u8]) -> Result<()> {
+        split_rel_path(path)?;
+        if !valid_stream_name(name) || data.len() > Self::MAX_ALT_STREAM {
+            return Err(Error::UnsafePath(format!("{path}:{name}")));
+        }
+        self.push(Record::AltStream { path: path.to_string(), name: name.to_string(), data: data.to_vec() })
     }
 
     /// Store a file read from `reader`. `changed` is called after the last
