@@ -1,0 +1,496 @@
+// ProfilePort — main window (dashboard prototype).
+
+import { Theme } from "theme.slint";
+import { Icon, Label, Card, PrimaryButton, SecondaryButton, Badge, BadgeKind, NavItem, ActionCard } from "components.slint";
+
+export { Theme }
+
+export enum BackupStatus { verified, partial, interrupted }
+
+// One transfer package on the drive. Only `ticket`, `created`, `size`,
+// `status`, `detail` and `age` are stored in plaintext; `profile` and
+// `computer` live in the encrypted manifest and are empty until the
+// technician enters the transfer code (`unlocked`).
+export struct BackupEntry {
+    ticket: string,
+    unlocked: bool,
+    profile: string,
+    computer: string,
+    created: string,
+    size: string,
+    status: BackupStatus,
+    detail: string,
+    age: string,
+    stale: bool,
+}
+
+export struct DriveInfo {
+    label: string,
+    letter: string,
+    filesystem: string,
+    total: string,
+    free: string,
+    // Fractions of total capacity, 0.0–1.0.
+    backups-fraction: float,
+    app-fraction: float,
+    backups-size: string,
+    app-size: string,
+    // Packages older than the retention threshold.
+    stale-count: int,
+    stale-threshold: string,
+}
+
+component Sidebar inherits Rectangle {
+    in-out property <int> active-page: 0;
+    in property <string> version;
+
+    background: Theme.sidebar-bg;
+
+    // Hairline between sidebar and content.
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Theme.border;
+    }
+
+    VerticalLayout {
+        padding: Theme.space-4;
+        padding-top: Theme.space-5;
+        spacing: Theme.space-1;
+
+        // Brand
+        HorizontalLayout {
+            padding-left: Theme.space-2;
+            padding-bottom: Theme.space-6;
+            spacing: Theme.space-3;
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 8px;
+                background: @linear-gradient(135deg, Theme.accent 0%, Theme.accent.mix(#7c3aed, 55%) 100%);
+                Icon {
+                    source: @image-url("icons/arrow-right-left.svg");
+                    size: 16px;
+                    tint: white;
+                }
+            }
+            Label {
+                text: "ProfilePort";
+                font-size: 15.5px;
+                font-weight: Theme.weight-bold;
+                letter-spacing: -0.2px;
+            }
+        }
+
+        NavItem { text: "Home";      icon: @image-url("icons/house.svg");               active: root.active-page == 0; clicked => { root.active-page = 0; } }
+        NavItem { text: "Back up";   icon: @image-url("icons/hard-drive-upload.svg");   active: root.active-page == 1; clicked => { root.active-page = 1; } }
+        NavItem { text: "Restore";   icon: @image-url("icons/hard-drive-download.svg"); active: root.active-page == 2; clicked => { root.active-page = 2; } }
+        NavItem { text: "USB drive"; icon: @image-url("icons/usb.svg");                 active: root.active-page == 3; clicked => { root.active-page = 3; } }
+        NavItem { text: "Reports";   icon: @image-url("icons/file-text.svg");           active: root.active-page == 4; clicked => { root.active-page = 4; } }
+
+        Rectangle { vertical-stretch: 1; }
+
+        NavItem { text: "Settings";  icon: @image-url("icons/settings.svg");            active: root.active-page == 5; clicked => { root.active-page = 5; } }
+
+        // Offline indicator — ProfilePort never talks to the network.
+        HorizontalLayout {
+            padding-left: Theme.space-3;
+            padding-top: Theme.space-3;
+            spacing: Theme.space-2;
+            Icon { source: @image-url("icons/shield-check.svg"); size: 14px; tint: Theme.success; }
+            Label {
+                text: "Offline · v" + root.version;
+                font-size: Theme.text-caption;
+                color: Theme.text-tertiary;
+            }
+        }
+    }
+}
+
+component Notice inherits Rectangle {
+    in property <string> title;
+    in property <string> message;
+    in property <string> action;
+    callback action-clicked;
+
+    border-radius: Theme.radius-medium + 2px;
+    border-width: 1px;
+    border-color: Theme.warning-border;
+    background: Theme.warning-subtle;
+
+    HorizontalLayout {
+        padding: Theme.space-3;
+        padding-left: Theme.space-4;
+        spacing: Theme.space-3;
+        Icon { source: @image-url("icons/triangle-alert.svg"); size: 18px; tint: Theme.warning; }
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            Label { text: root.title; font-weight: Theme.weight-semibold; font-size: Theme.text-small + 0.5px; }
+            Label {
+                text: root.message;
+                color: Theme.text-secondary;
+                font-size: Theme.text-small + 0.5px;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+        }
+        SecondaryButton {
+            text: root.action;
+            height: 32px;
+            has-icon: true;
+            icon: @image-url("icons/refresh-cw.svg");
+            clicked => { root.action-clicked(); }
+        }
+    }
+}
+
+component LegendItem inherits HorizontalLayout {
+    in property <color> swatch;
+    in property <string> name;
+    in property <string> value;
+    in property <bool> outlined: false;
+    spacing: Theme.space-2;
+    Rectangle {
+        width: 8px;
+        Rectangle {
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            background: root.swatch;
+            border-width: root.outlined ? 1px : 0px;
+            border-color: Theme.border-strong;
+        }
+    }
+    Label { text: root.name; font-size: Theme.text-small; color: Theme.text-secondary; horizontal-stretch: 1; }
+    Label { text: root.value; font-size: Theme.text-small; font-weight: Theme.weight-medium; horizontal-alignment: right; }
+}
+
+component DriveCard inherits Card {
+    in property <DriveInfo> drive;
+    callback prepare-clicked;
+
+    VerticalLayout {
+        padding: Theme.space-5 + 2px;
+        spacing: Theme.space-3 + 2px;
+
+        HorizontalLayout {
+            spacing: Theme.space-3;
+            Rectangle {
+                width: 40px;
+                height: 40px;
+                border-radius: Theme.radius-medium;
+                background: Theme.surface-sunken;
+                Icon { source: @image-url("icons/usb.svg"); size: 20px; tint: Theme.text-secondary; }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Label {
+                    text: root.drive.label + " (" + root.drive.letter + ")";
+                    font-weight: Theme.weight-semibold;
+                }
+                Label {
+                    text: root.drive.filesystem + " · " + root.drive.total;
+                    color: Theme.text-tertiary;
+                    font-size: Theme.text-caption;
+                }
+            }
+        }
+
+        VerticalLayout {
+            spacing: Theme.space-2;
+            HorizontalLayout {
+                Label { text: root.drive.free; font-size: 22px; font-weight: Theme.weight-semibold; letter-spacing: -0.3px; }
+                Label { text: "  free"; color: Theme.text-secondary; font-size: Theme.text-small; vertical-alignment: bottom; horizontal-stretch: 1; }
+            }
+
+            // Capacity bar
+            bar := Rectangle {
+                height: 10px;
+                border-radius: 5px;
+                background: Theme.seg-free;
+                clip: true;
+                Rectangle {
+                    x: 0;
+                    width: bar.width * root.drive.backups-fraction;
+                    background: Theme.seg-backups;
+                }
+                Rectangle {
+                    x: bar.width * root.drive.backups-fraction + 2px;
+                    width: max(0px, bar.width * root.drive.app-fraction - 2px);
+                    background: Theme.seg-app;
+                }
+            }
+        }
+
+        VerticalLayout {
+            spacing: Theme.space-2;
+            LegendItem { swatch: Theme.seg-backups; name: "Customer backups"; value: root.drive.backups-size; }
+            LegendItem { swatch: Theme.seg-app; name: "ProfilePort & reports"; value: root.drive.app-size; }
+            LegendItem { swatch: Theme.seg-free; name: "Available"; value: root.drive.free; outlined: true; }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+
+        if root.drive.stale-count > 0: HorizontalLayout {
+            spacing: Theme.space-2;
+            Icon { source: @image-url("icons/clock-3.svg"); size: 14px; tint: Theme.warning; }
+            Label {
+                text: root.drive.stale-count == 1
+                    ? "1 backup is older than " + root.drive.stale-threshold
+                    : root.drive.stale-count + " backups are older than " + root.drive.stale-threshold;
+                font-size: Theme.text-small;
+                color: Theme.warning;
+                horizontal-stretch: 1;
+            }
+        }
+
+        SecondaryButton {
+            text: "Prepare for next customer";
+            has-icon: true;
+            icon: @image-url("icons/history.svg");
+            clicked => { root.prepare-clicked(); }
+        }
+    }
+}
+
+component BackupRow inherits Rectangle {
+    in property <BackupEntry> entry;
+    in property <bool> last: false;
+    callback clicked;
+
+    height: 56px;
+    background: ta.has-hover ? Theme.surface-hover : transparent;
+    animate background { duration: Theme.motion-fast; }
+
+    HorizontalLayout {
+        padding-left: Theme.space-5;
+        padding-right: Theme.space-4;
+        spacing: Theme.space-4;
+
+        // Lock state: closed until the transfer code has been entered.
+        Rectangle {
+            width: 36px;
+            Rectangle {
+                width: 36px;
+                height: 36px;
+                border-radius: 18px;
+                background: root.entry.unlocked ? Theme.accent-subtle : Theme.surface-sunken;
+                Icon {
+                    source: root.entry.unlocked ? @image-url("icons/lock-open.svg") : @image-url("icons/lock.svg");
+                    size: 16px;
+                    tint: root.entry.unlocked ? Theme.accent : Theme.text-tertiary;
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+            horizontal-stretch: 1;
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                Label { text: "Ticket " + root.entry.ticket; font-weight: Theme.weight-semibold; }
+                Label {
+                    text: root.entry.unlocked
+                        ? root.entry.profile + " on " + root.entry.computer
+                        : "Locked";
+                    color: Theme.text-tertiary;
+                    font-size: Theme.text-small;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+            }
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                Label {
+                    text: root.entry.created + "  ·  " + root.entry.size + (root.entry.detail == "" ? "" : "  ·  " + root.entry.detail);
+                    color: Theme.text-secondary;
+                    font-size: Theme.text-caption + 0.5px;
+                    overflow: elide;
+                }
+                if root.entry.stale: HorizontalLayout {
+                    spacing: 4px;
+                    Label { text: "·  "; color: Theme.text-secondary; font-size: Theme.text-caption + 0.5px; }
+                    Icon { source: @image-url("icons/clock-3.svg"); size: 12px; tint: Theme.warning; }
+                    Label {
+                        text: root.entry.age;
+                        color: Theme.warning;
+                        font-size: Theme.text-caption + 0.5px;
+                        font-weight: Theme.weight-medium;
+                    }
+                }
+                Rectangle { horizontal-stretch: 1; }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            Badge {
+                text: root.entry.status == BackupStatus.verified ? "Verified"
+                    : root.entry.status == BackupStatus.partial ? "Partial"
+                    : "Interrupted";
+                kind: root.entry.status == BackupStatus.verified ? BadgeKind.success : BadgeKind.warning;
+            }
+        }
+
+        Icon { source: @image-url("icons/chevron-right.svg"); size: 16px; tint: Theme.text-tertiary; }
+    }
+
+    if !root.last: Rectangle {
+        x: Theme.space-5;
+        y: parent.height - 1px;
+        width: parent.width - Theme.space-5 * 2;
+        height: 1px;
+        background: Theme.border;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component BackupsCard inherits Card {
+    in property <[BackupEntry]> backups;
+    callback open-backup(int);
+    callback view-all;
+    clip: true;
+
+    VerticalLayout {
+        HorizontalLayout {
+            padding: Theme.space-5;
+            padding-left: Theme.space-6;
+            padding-bottom: Theme.space-3;
+            Label { text: "On this drive"; font-weight: Theme.weight-semibold; horizontal-stretch: 1; }
+            Label {
+                text: "View all";
+                color: Theme.accent;
+                font-size: Theme.text-small;
+                font-weight: Theme.weight-semibold;
+                TouchArea { mouse-cursor: pointer; clicked => { root.view-all(); } }
+            }
+        }
+        for b[i] in root.backups: BackupRow {
+            entry: b;
+            last: i == root.backups.length - 1;
+            clicked => { root.open-backup(i); }
+        }
+        Rectangle { vertical-stretch: 1; }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "ProfilePort";
+    preferred-width: 1200px;
+    preferred-height: 760px;
+    min-width: 980px;
+    min-height: 640px;
+    background: Theme.window-bg;
+    default-font-family: Theme.font-family;
+
+    in property <string> version: "0.1.0";
+    in property <string> host-name: "DESKTOP-8H2KQ";
+    in property <DriveInfo> drive;
+    in property <[BackupEntry]> backups;
+    in property <bool> show-notice: true;
+    in property <string> notice-title;
+    in property <string> notice-message;
+
+    callback start-backup;
+    callback start-restore;
+    callback manage-drive;
+    callback resume-transfer;
+    callback prepare-drive;
+    callback open-backup(int);
+
+    HorizontalLayout {
+        Sidebar {
+            width: 232px;
+            version: root.version;
+        }
+
+        VerticalLayout {
+            padding: Theme.space-10;
+            padding-top: Theme.space-8 - 4px;
+            padding-bottom: Theme.space-8;
+            spacing: Theme.space-4 + 2px;
+            horizontal-stretch: 1;
+
+            // Header
+            VerticalLayout {
+                spacing: Theme.space-1 + 2px;
+                HorizontalLayout {
+                    spacing: Theme.space-2;
+                    Icon { source: @image-url("icons/laptop.svg"); size: 14px; tint: Theme.text-tertiary; }
+                    Label {
+                        text: "Running on " + root.host-name + " from " + root.drive.label + " (" + root.drive.letter + ")";
+                        font-size: Theme.text-small;
+                        color: Theme.text-tertiary;
+                    }
+                }
+                Label {
+                    text: "What would you like to do?";
+                    font-size: Theme.text-display;
+                    font-weight: Theme.weight-semibold;
+                    letter-spacing: -0.5px;
+                }
+            }
+
+            if root.show-notice: Notice {
+                title: root.notice-title;
+                message: root.notice-message;
+                action: "Resume";
+                action-clicked => { root.resume-transfer(); }
+            }
+
+            // Primary actions
+            HorizontalLayout {
+                spacing: Theme.space-5;
+                ActionCard {
+                    horizontal-stretch: 1;
+                    preferred-width: 220px;
+                    title: "Back up a PC";
+                    description: "Copy a user's files, settings and app list from this computer to the USB drive.";
+                    cta: "Start backup";
+                    icon: @image-url("icons/hard-drive-upload.svg");
+                    clicked => { root.start-backup(); }
+                }
+                ActionCard {
+                    horizontal-stretch: 1;
+                    preferred-width: 220px;
+                    title: "Restore a PC";
+                    description: "Move a backup from the USB drive onto this computer, into any user account.";
+                    cta: "Choose a backup";
+                    icon: @image-url("icons/hard-drive-download.svg");
+                    clicked => { root.start-restore(); }
+                }
+                ActionCard {
+                    horizontal-stretch: 1;
+                    preferred-width: 220px;
+                    title: "Manage USB drive";
+                    description: "Review stored backups, check free space and clear the drive between customers.";
+                    cta: "Open drive";
+                    icon: @image-url("icons/usb.svg");
+                    clicked => { root.manage-drive(); }
+                }
+            }
+
+            // Drive status + recent backups
+            HorizontalLayout {
+                spacing: Theme.space-5;
+                vertical-stretch: 1;
+                DriveCard {
+                    width: 340px;
+                    drive: root.drive;
+                    prepare-clicked => { root.prepare-drive(); }
+                }
+                BackupsCard {
+                    horizontal-stretch: 1;
+                    backups: root.backups;
+                    open-backup(i) => { root.open-backup(i); }
+                }
+            }
+        }
+    }
+}
