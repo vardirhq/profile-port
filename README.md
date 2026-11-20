@@ -47,10 +47,10 @@ on Windows (x64 or ARM64 native; see ADR 0005 on why not 32-bit).
 | Decision | Status |
 |---|---|
 | [Slint, not Tauri](docs/decisions/0001-gui-framework.md) | Accepted |
-| [Encrypted, chunked package format](docs/decisions/0002-package-format.md) | Proposed |
-| [Native Rust copy engine, not Robocopy](docs/decisions/0003-copy-engine.md) | Proposed |
-| [Always run elevated](docs/decisions/0004-privilege-model.md) | Proposed |
-| [VSS for locked files; registry archived, not merged](docs/decisions/0005-locked-files-and-registry.md) | Proposed |
+| [Encrypted, chunked package format](docs/decisions/0002-package-format.md) | Accepted |
+| [Native Rust copy engine, not Robocopy](docs/decisions/0003-copy-engine.md) | Accepted |
+| [Always run elevated](docs/decisions/0004-privilege-model.md) | Accepted |
+| [Locked files: avoid, then VSS; registry archived, not merged](docs/decisions/0005-locked-files-and-registry.md) | Accepted |
 
 ## Suggested build order
 

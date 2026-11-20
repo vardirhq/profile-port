@@ -7,13 +7,21 @@ export { Theme }
 
 export enum BackupStatus { verified, partial, interrupted }
 
+// One transfer package on the drive. Only `ticket`, `created`, `size`,
+// `status`, `detail` and `age` are stored in plaintext; `profile` and
+// `computer` live in the encrypted manifest and are empty until the
+// technician enters the transfer code (`unlocked`).
 export struct BackupEntry {
+    ticket: string,
+    unlocked: bool,
     profile: string,
     computer: string,
     created: string,
     size: string,
     status: BackupStatus,
     detail: string,
+    age: string,
+    stale: bool,
 }
 
 export struct DriveInfo {
@@ -27,6 +35,9 @@ export struct DriveInfo {
     app-fraction: float,
     backups-size: string,
     app-size: string,
+    // Packages older than the retention threshold.
+    stale-count: int,
+    stale-threshold: string,
 }
 
 component Sidebar inherits Rectangle {
@@ -160,7 +171,7 @@ component DriveCard inherits Card {
 
     VerticalLayout {
         padding: Theme.space-5 + 2px;
-        spacing: Theme.space-4;
+        spacing: Theme.space-3 + 2px;
 
         HorizontalLayout {
             spacing: Theme.space-3;
@@ -221,6 +232,19 @@ component DriveCard inherits Card {
 
         Rectangle { vertical-stretch: 1; }
 
+        if root.drive.stale-count > 0: HorizontalLayout {
+            spacing: Theme.space-2;
+            Icon { source: @image-url("icons/clock-3.svg"); size: 14px; tint: Theme.warning; }
+            Label {
+                text: root.drive.stale-count == 1
+                    ? "1 backup is older than " + root.drive.stale-threshold
+                    : root.drive.stale-count + " backups are older than " + root.drive.stale-threshold;
+                font-size: Theme.text-small;
+                color: Theme.warning;
+                horizontal-stretch: 1;
+            }
+        }
+
         SecondaryButton {
             text: "Prepare for next customer";
             has-icon: true;
@@ -235,7 +259,7 @@ component BackupRow inherits Rectangle {
     in property <bool> last: false;
     callback clicked;
 
-    height: 64px;
+    height: 56px;
     background: ta.has-hover ? Theme.surface-hover : transparent;
     animate background { duration: Theme.motion-fast; }
 
@@ -244,14 +268,19 @@ component BackupRow inherits Rectangle {
         padding-right: Theme.space-4;
         spacing: Theme.space-4;
 
+        // Lock state: closed until the transfer code has been entered.
         Rectangle {
             width: 36px;
             Rectangle {
                 width: 36px;
                 height: 36px;
                 border-radius: 18px;
-                background: Theme.surface-sunken;
-                Icon { source: @image-url("icons/laptop.svg"); size: 17px; tint: Theme.text-secondary; }
+                background: root.entry.unlocked ? Theme.accent-subtle : Theme.surface-sunken;
+                Icon {
+                    source: root.entry.unlocked ? @image-url("icons/lock-open.svg") : @image-url("icons/lock.svg");
+                    size: 16px;
+                    tint: root.entry.unlocked ? Theme.accent : Theme.text-tertiary;
+                }
             }
         }
 
@@ -261,14 +290,37 @@ component BackupRow inherits Rectangle {
             horizontal-stretch: 1;
             HorizontalLayout {
                 spacing: Theme.space-2;
-                Label { text: root.entry.profile; font-weight: Theme.weight-semibold; }
-                Label { text: "on " + root.entry.computer; color: Theme.text-tertiary; font-size: Theme.text-small; horizontal-stretch: 1; overflow: elide; }
+                Label { text: "Ticket " + root.entry.ticket; font-weight: Theme.weight-semibold; }
+                Label {
+                    text: root.entry.unlocked
+                        ? root.entry.profile + " on " + root.entry.computer
+                        : "Locked";
+                    color: Theme.text-tertiary;
+                    font-size: Theme.text-small;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
             }
-            Label {
-                text: root.entry.created + "  ·  " + root.entry.size + (root.entry.detail == "" ? "" : "  ·  " + root.entry.detail);
-                color: Theme.text-secondary;
-                font-size: Theme.text-caption + 0.5px;
-                overflow: elide;
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                Label {
+                    text: root.entry.created + "  ·  " + root.entry.size + (root.entry.detail == "" ? "" : "  ·  " + root.entry.detail);
+                    color: Theme.text-secondary;
+                    font-size: Theme.text-caption + 0.5px;
+                    overflow: elide;
+                }
+                if root.entry.stale: HorizontalLayout {
+                    spacing: 4px;
+                    Label { text: "·  "; color: Theme.text-secondary; font-size: Theme.text-caption + 0.5px; }
+                    Icon { source: @image-url("icons/clock-3.svg"); size: 12px; tint: Theme.warning; }
+                    Label {
+                        text: root.entry.age;
+                        color: Theme.warning;
+                        font-size: Theme.text-caption + 0.5px;
+                        font-weight: Theme.weight-medium;
+                    }
+                }
+                Rectangle { horizontal-stretch: 1; }
             }
         }
 
@@ -362,7 +414,7 @@ export component AppWindow inherits Window {
             padding: Theme.space-10;
             padding-top: Theme.space-8 - 4px;
             padding-bottom: Theme.space-8;
-            spacing: Theme.space-5;
+            spacing: Theme.space-4 + 2px;
             horizontal-stretch: 1;
 
             // Header

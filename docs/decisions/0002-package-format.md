@@ -1,6 +1,6 @@
 # 0002 — Transfer package format
 
-**Status:** Proposed — this is the most consequential open decision.
+**Status:** Accepted
 
 ## Context
 
@@ -91,21 +91,53 @@ and **specific to the job** — a store-wide PIN protects a lost drive but
 cannot erase past customers, because the PIN never changes and any surviving
 wrapped key still opens with it.
 
-**Proposed:**
+**Decision:**
 
 - Each package has a random key, wrapped (Argon2id → key-encryption key) with
-  a short **transfer code** generated at the end of export.
-- The technician writes the code on the **job ticket / work order**. It is
-  never written to the drive. Restore asks for it.
-- When the job is closed and the code is no longer retained, that customer's
-  data is unreadable even if deleted blocks are recovered. The erasure
-  guarantee therefore depends on the store's **ticket-retention policy** for
-  codes. Document this; don't hide it.
-- **Optional store master key** (kept on the store's workstation, not the
-  drive) as a second wrap, for jobs where a redo is impossible — chiefly
-  recovery from a failing drive. Off by default; enabling it means past
-  packages are only as erased as the master key is protected.
-- A lost code otherwise just means redoing the backup from the source PC.
+  a **transfer code** generated at the end of export. The code is never
+  written to the drive. Restore asks for it.
+- The technician writes the code on a **paper device tag** that stays with
+  the customer's devices (taped to the old PC or its bag), **not in the
+  ticket system**. Ticket systems retain records for years and are backed
+  up; a paper tag is discarded when the devices go back to the customer,
+  which ends the code's life without depending on any retention policy. The
+  export screen says so explicitly: "Write this on the device tag. Don't
+  enter it in the ticket system."
+- Once the tag is discarded, that customer's data is unreadable even if
+  deleted blocks are recovered from flash.
+- **No store master key in v1.** It would be a single secret that, if it
+  leaked, exposed every past customer, and it would weaken the erasure
+  promise for all jobs to protect a few. Revisit only if lost codes prove to
+  be a real problem in practice.
+- A lost code means redoing the backup from the source PC, which is usually
+  still on the bench.
+
+### Transfer code format
+
+A stolen drive can be attacked offline, so the code must resist guessing
+even though Argon2id slows each attempt. Six digits (~20 bits) is too weak.
+
+- **~50 bits of entropy:** 10 random characters from Crockford base32
+  (no 0/O, 1/I/L ambiguity), plus 2 check characters, shown in groups of
+  four: `7KQ2-M9XD-4PWH`.
+- Case-insensitive; hyphens and spaces ignored on entry.
+- The check characters catch typos before decryption is attempted, so a
+  mistyped code gives "That code isn't valid — check the device tag", not a
+  confusing decryption failure.
+- Argon2id parameters stored in `header.bin` so they can be raised in later
+  format versions.
+
+### Guarding against a lost code
+
+The real risk is a mistranscribed code while the source is about to be
+released — worst for recovery from a failing drive, where a second backup
+may be impossible. So:
+
+- Before the export screen can be closed, the technician **types the code
+  back once**. A mismatch shows the code again.
+- For packages marked as **recovery jobs**, ProfilePort never offers to
+  delete the package until the restore is verified **and** the technician
+  confirms the customer has checked their data.
 
 ## Plaintext labels
 
@@ -113,7 +145,7 @@ The encrypted manifest hides names, so the dashboard cannot show
 "j.miller on DESKTOP-4KQ7F2" without the code. Storing that in plaintext
 would put customer-identifying data on the drive.
 
-**Proposed:** packages carry a plaintext **ticket number** (entered at
+**Decision:** packages carry a plaintext **ticket number** (entered at
 export), date, size and status only. Profile and computer names appear only
 after the code is entered. Ticket numbers are how technicians already match
 jobs, and they identify no one without the store's own system.
@@ -121,16 +153,18 @@ jobs, and they identify no one without the store's own system.
 ## Lifecycle
 
 - After a **verified** restore, the final step asks: "Delete this backup from
-  the drive now?" (a prompt, not automatic deletion).
+  the drive now?" (a prompt, not automatic deletion). Recovery jobs are the
+  exception described above.
 - Packages older than a configurable age (e.g. 14 days) are flagged on the
   dashboard for cleanup.
 - "Prepare for next customer" deletes selected packages. With per-job codes
-  this honestly makes their data inaccessible once the codes are discarded.
+  this honestly makes their data inaccessible once the device tags are
+  discarded.
 
-## Decision (proposed)
+## Decision
 
-Option B with per-package keys wrapped by a transfer code recorded on the
-job ticket, from Phase 1.
+Option B with per-package keys wrapped by a transfer code recorded on a paper
+device tag, from Phase 1. No master key in v1.
 
 ## Consequences
 
@@ -140,8 +174,9 @@ job ticket, from Phase 1.
   [0003](0003-copy-engine.md).
 - The format must be versioned and documented (`docs/package-format.md`)
   before the first release, with a stand-alone extractor.
-- A lost transfer code means redoing the backup (or using the optional master
-  key). The UI must make this unmistakable before the source PC is released.
-- The dashboard's backup list is keyed by ticket number, not by user or PC
-  name (the current prototype shows names and needs updating).
-- Real-world erasure depends on the store's ticket-retention policy for codes.
+- A lost transfer code means redoing the backup. The type-back check and the
+  recovery-job safeguard keep this rare.
+- The dashboard's backup list is keyed by ticket number; profile and computer
+  names appear only for packages unlocked in the current session.
+- Staff must actually keep codes out of the ticket system. This is a store
+  procedure, and the app reminds them at the moment the code is shown.

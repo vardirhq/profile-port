@@ -19,7 +19,12 @@ visual system and how to work on it.
    for meaning (green = verified, amber = needs attention, red = failure).
 4. **Honest wording.** "Partial — 3 files skipped", not "Done". "Verified"
    only when content was hashed and compared.
-5. **Dense enough for professionals.** Generous whitespace, but a technician
+5. **Nothing customer-identifying without the code.** The drive is shared
+   across customers ([ADR 0002](../decisions/0002-package-format.md)), so
+   lists show only plaintext package metadata — ticket number, date, size,
+   status, age. Profile and computer names appear only for packages
+   unlocked with their transfer code in the current session.
+6. **Dense enough for professionals.** Generous whitespace, but a technician
    should see drive state and recent backups without scrolling.
 
 ## Tokens
@@ -88,9 +93,12 @@ as final. Font rasterisation and DPI behaviour differ there.
 
 ## Next screens
 
-1. Profile discovery (pick a Windows installation and user).
+1. Profile discovery (pick a Windows installation and user; warn if that
+   user is signed in — see ADR 0005).
 2. Data selection with size estimates and exclusions.
 3. Transfer progress (overall + current file, speed, ETA, warnings).
-4. Verification summary (verified / partial / failed, with drill-down).
-5. Restore mapping (source folders → destination user, conflict preview).
-6. USB drive management and "Prepare for next customer".
+4. Export complete: transfer code display, "write it on the device tag",
+   and type-back confirmation (ADR 0002).
+5. Verification summary (verified / partial / failed, with drill-down).
+6. Unlock a package (enter transfer code) and restore mapping (source folders → destination user, conflict preview).
+7. USB drive management and "Prepare for next customer".

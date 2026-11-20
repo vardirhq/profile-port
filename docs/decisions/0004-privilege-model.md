@@ -1,6 +1,6 @@
 # 0004 — Always run elevated
 
-**Status:** Proposed
+**Status:** Accepted
 
 ## Context
 
@@ -20,7 +20,7 @@ Elevating mid-flow (re-launching with `runas`) means splitting the app into
 two processes or restarting it, which complicates state, progress reporting
 and resume.
 
-## Decision (proposed)
+## Decision
 
 Embed an application manifest with `requestedExecutionLevel
 level="requireAdministrator"`. One UAC prompt at launch; the whole session
@@ -40,5 +40,6 @@ validated target (see the proposal's "explicit operations" principle).
 - An elevated process owning files it writes: restored files must be
   explicitly re-owned to the target user (see [0003](0003-copy-engine.md)).
 - **Code signing.** An elevated, unsigned EXE shows "Unknown publisher" in the
-  UAC prompt and is more likely to be flagged by Defender or other AV. Budget for an
-  Authenticode certificate before release.
+  UAC prompt and is more likely to be flagged by Defender or other AV. Buy an
+  Authenticode certificate before ProfilePort goes onto store drives, so the
+  UAC prompt shows a real publisher name and technicians learn to expect it.

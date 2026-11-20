@@ -1,6 +1,6 @@
 # 0003 — Copy engine: native Rust, not Robocopy
 
-**Status:** Proposed (largely follows from [0002](0002-package-format.md))
+**Status:** Accepted (largely follows from [0002](0002-package-format.md))
 
 ## Context
 
@@ -15,7 +15,7 @@ all three:
 Robocopy's genuine strengths — backup-privilege reads, long paths, retries —
 are all available directly from Win32.
 
-## Decision (proposed)
+## Decision
 
 A native Rust engine, using plain OS threads (no Tokio; Windows file I/O here
 is blocking anyway) and a channel to report progress to the UI.

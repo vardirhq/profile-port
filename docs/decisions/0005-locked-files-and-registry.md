@@ -1,6 +1,6 @@
-# 0005 — Locked files via VSS; user registry archived, not merged
+# 0005 — Locked files: avoid, then VSS; user registry archived, not merged
 
-**Status:** Proposed
+**Status:** Accepted — VSS deferred to Phase 2
 
 ## Context
 
@@ -15,9 +15,27 @@ The original proposal says "close applications or use an appropriate
 consistency mechanism" without naming one, and does not mention the user's
 registry settings at all, although many settings live there.
 
-## Decision (proposed)
+## Decision
 
-### Locked files: Volume Shadow Copy
+### Phase 1: avoid the locks instead of working around them
+
+In-store, the technician controls how the source PC is signed in to. If they
+sign in with a **separate administrator account** rather than as the
+customer, the customer's hive isn't loaded and their Outlook and browsers
+aren't running — so most locks never happen. Phase 1 therefore:
+
+- **Detects whether the source user is signed in** (active or disconnected
+  session) and, if so, recommends signing them out before export, with a
+  one-click "Sign out user" where permitted.
+- Warns if known applications (Outlook, browsers, Thunderbird) are running
+  under that user.
+- Reports anything still locked as **skipped (locked)** — individually, in
+  the report — never silently.
+
+### Phase 2: Volume Shadow Copy
+
+For the cases Phase 1 can't avoid (the customer must stay signed in, a
+service holds files open, background sync):
 
 - Export reads from a **VSS snapshot** of the source volume
   (`IVssBackupComponents`). This gives a crash-consistent view of every file,

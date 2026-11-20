@@ -47,8 +47,11 @@ sounds. The stronger reasons are:
   [`docs/design/ui.md`](../design/ui.md)).
 - Screen-reader support on Windows (via AccessKit) is less mature than a
   browser engine's. Test with Narrator early.
-- **Licensing:** Slint is available under GPLv3, a royalty-free licence (which
-  permits proprietary desktop apps but requires attribution), or a commercial
-  licence. Choose before the first public release.
+- **Licensing:** Slint is available under GPLv3, a royalty-free licence, or a
+  commercial licence. ProfilePort uses the **royalty-free licence**: it
+  permits closed-source desktop apps at no cost, provided we show
+  attribution (an "About" screen entry with Slint's badge/notice). This
+  fits an in-store tool. **Revisit before selling or distributing
+  ProfilePort to other businesses.**
 - The engine must stay GUI-independent (a requirement anyway) so a CLI and,
   later, a WinPE front-end can share it.
