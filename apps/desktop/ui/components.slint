@@ -1,0 +1,265 @@
+// Reusable building blocks for ProfilePort screens.
+
+import { Theme } from "theme.slint";
+
+// A monochrome icon tinted with a theme colour. The icon is centred within
+// whatever height its container gives it, so it lines up with text in rows.
+export component Icon inherits Rectangle {
+    in property <image> source;
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 20px;
+    width: size;
+    min-height: size;
+    Image {
+        width: root.size;
+        height: root.size;
+        source: root.source;
+        colorize: root.tint;
+        image-fit: contain;
+    }
+}
+
+export component Label inherits Text {
+    color: Theme.text-primary;
+    font-family: Theme.font-family;
+    font-size: Theme.text-body;
+    font-weight: Theme.weight-regular;
+    vertical-alignment: center;
+}
+
+// A white (or dark) panel with a hairline border.
+export component Card inherits Rectangle {
+    background: Theme.surface;
+    border-radius: Theme.radius-large;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 12px;
+    drop-shadow-offset-y: 2px;
+    drop-shadow-color: Theme.shadow;
+}
+
+export component PrimaryButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> has-icon: false;
+    callback clicked;
+
+    height: 36px;
+    min-width: layout.min-width;
+    border-radius: Theme.radius-small + 2px;
+    background: ta.pressed ? Theme.accent-hover.darker(10%) : ta.has-hover ? Theme.accent-hover : Theme.accent;
+    animate background { duration: Theme.motion-fast; }
+
+    layout := HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        spacing: Theme.space-2;
+        alignment: center;
+        if root.has-icon: Icon { source: root.icon; tint: Theme.on-accent; size: 16px; }
+        Label { text: root.text; color: Theme.on-accent; font-weight: Theme.weight-semibold; font-size: Theme.text-small; }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component SecondaryButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> has-icon: false;
+    callback clicked;
+
+    height: 36px;
+    min-width: layout.min-width;
+    border-radius: Theme.radius-small + 2px;
+    border-width: 1px;
+    border-color: ta.has-hover ? Theme.border-strong : Theme.border;
+    background: ta.pressed ? Theme.surface-sunken : ta.has-hover ? Theme.surface-hover : Theme.surface;
+    animate background, border-color { duration: Theme.motion-fast; }
+
+    layout := HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        spacing: Theme.space-2;
+        alignment: center;
+        if root.has-icon: Icon { source: root.icon; tint: Theme.text-secondary; size: 16px; }
+        Label { text: root.text; font-weight: Theme.weight-semibold; font-size: Theme.text-small; }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export enum BadgeKind { success, warning, accent, neutral }
+
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <BadgeKind> kind: BadgeKind.neutral;
+
+    height: 22px;
+    width: layout.preferred-width;
+    border-radius: 11px;
+    background: kind == BadgeKind.success ? Theme.success-subtle
+              : kind == BadgeKind.warning ? Theme.warning-subtle
+              : kind == BadgeKind.accent  ? Theme.accent-subtle
+              : Theme.surface-sunken;
+
+    layout := HorizontalLayout {
+        padding-left: 9px;
+        padding-right: 10px;
+        spacing: 6px;
+        Rectangle {
+            width: 6px;
+            Rectangle {
+                width: 6px;
+                height: 6px;
+                border-radius: 3px;
+                background: label.color;
+            }
+        }
+        label := Label {
+            text: root.text;
+            font-size: Theme.text-caption;
+            font-weight: Theme.weight-semibold;
+            color: kind == BadgeKind.success ? Theme.success
+                 : kind == BadgeKind.warning ? Theme.warning
+                 : kind == BadgeKind.accent  ? Theme.accent
+                 : Theme.text-secondary;
+        }
+    }
+}
+
+// Sidebar navigation entry.
+export component NavItem inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> active: false;
+    callback clicked;
+
+    height: 38px;
+    border-radius: Theme.radius-small + 2px;
+    background: active ? Theme.surface : ta.has-hover ? Theme.surface.with-alpha(0.55) : transparent;
+    drop-shadow-blur: active ? 6px : 0px;
+    drop-shadow-offset-y: 1px;
+    drop-shadow-color: Theme.shadow;
+    animate background { duration: Theme.motion-fast; }
+
+    // Accent marker for the active page.
+    Rectangle {
+        x: 0;
+        width: 3px;
+        height: active ? 16px : 0px;
+        y: (parent.height - self.height) / 2;
+        border-radius: 1.5px;
+        background: Theme.accent;
+        animate height { duration: Theme.motion-medium; easing: ease-out; }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+        spacing: Theme.space-3;
+        Icon {
+            source: root.icon;
+            size: 18px;
+            tint: root.active ? Theme.accent : Theme.text-secondary;
+        }
+        Label {
+            text: root.text;
+            font-size: Theme.text-small + 0.5px;
+            font-weight: root.active ? Theme.weight-semibold : Theme.weight-medium;
+            color: root.active ? Theme.text-primary : Theme.text-secondary;
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// One of the three big actions on the dashboard.
+export component ActionCard inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+    in property <string> cta;
+    in property <image> icon;
+    callback clicked;
+
+    border-radius: Theme.radius-large;
+    border-width: 1px;
+    border-color: ta.has-hover ? Theme.accent : Theme.border;
+    background: Theme.surface;
+    drop-shadow-blur: ta.has-hover ? 22px : 12px;
+    drop-shadow-offset-y: ta.has-hover ? 6px : 2px;
+    drop-shadow-color: ta.has-hover ? Theme.shadow-hover : Theme.shadow;
+    animate border-color, drop-shadow-blur, drop-shadow-offset-y, drop-shadow-color {
+        duration: Theme.motion-medium;
+        easing: ease-out;
+    }
+
+    VerticalLayout {
+        padding: Theme.space-5 + 2px;
+        spacing: Theme.space-3 + 2px;
+
+        HorizontalLayout {
+            Rectangle {
+                width: 44px;
+                height: 44px;
+                border-radius: Theme.radius-medium;
+                background: Theme.accent-subtle;
+                Icon { source: root.icon; size: 22px; tint: Theme.accent; }
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+
+        VerticalLayout {
+            spacing: Theme.space-1 + 2px;
+            Label {
+                text: root.title;
+                font-size: Theme.text-title;
+                font-weight: Theme.weight-semibold;
+            }
+            Label {
+                text: root.description;
+                color: Theme.text-secondary;
+                font-size: Theme.text-small + 0.5px;
+                wrap: word-wrap;
+                vertical-alignment: top;
+            }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+
+        HorizontalLayout {
+            spacing: Theme.space-1 + 2px;
+            Label {
+                text: root.cta;
+                color: Theme.accent;
+                font-size: Theme.text-small;
+                font-weight: Theme.weight-semibold;
+            }
+            Rectangle {
+                min-width: 24px;
+                horizontal-stretch: 1;
+                Icon {
+                    source: @image-url("icons/arrow-right.svg");
+                    size: 15px;
+                    tint: Theme.accent;
+                    x: ta.has-hover ? 5px : 0px;
+                    width: 15px;
+                    animate x { duration: Theme.motion-medium; easing: ease-out; }
+                }
+            }
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}

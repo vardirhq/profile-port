@@ -1,0 +1,84 @@
+// ProfilePort design tokens.
+//
+// Every colour, size and radius used by the UI comes from here, so the whole
+// app can be re-themed (or switched light/dark) from one place.
+
+import "./fonts/Inter-Regular.otf";
+import "./fonts/Inter-Medium.otf";
+import "./fonts/Inter-SemiBold.otf";
+import "./fonts/Inter-Bold.otf";
+
+export global Theme {
+    in-out property <bool> dark: false;
+
+    // ---- Typography -------------------------------------------------------
+    // Inter is bundled so the UI renders identically on Windows 10 (which
+    // lacks Segoe UI Variable) and Windows 11.
+    out property <string> font-family: "Inter";
+
+    out property <length> text-display: 28px;
+    out property <length> text-title: 17px;
+    out property <length> text-body: 14px;
+    out property <length> text-small: 13px;
+    out property <length> text-caption: 12px;
+
+    out property <int> weight-regular: 400;
+    out property <int> weight-medium: 500;
+    out property <int> weight-semibold: 600;
+    out property <int> weight-bold: 700;
+
+    // ---- Spacing (4px grid) -----------------------------------------------
+    out property <length> space-1: 4px;
+    out property <length> space-2: 8px;
+    out property <length> space-3: 12px;
+    out property <length> space-4: 16px;
+    out property <length> space-5: 20px;
+    out property <length> space-6: 24px;
+    out property <length> space-8: 32px;
+    out property <length> space-10: 40px;
+
+    // ---- Shape ------------------------------------------------------------
+    out property <length> radius-small: 6px;
+    out property <length> radius-medium: 10px;
+    out property <length> radius-large: 14px;
+
+    // ---- Motion -----------------------------------------------------------
+    out property <duration> motion-fast: 120ms;
+    out property <duration> motion-medium: 200ms;
+
+    // ---- Neutrals ---------------------------------------------------------
+    out property <color> window-bg:      dark ? #0e1014 : #f5f6f8;
+    out property <color> sidebar-bg:     dark ? #121418 : #eceef2;
+    out property <color> surface:        dark ? #171a1f : #ffffff;
+    out property <color> surface-hover:  dark ? #1c2027 : #fafbfc;
+    out property <color> surface-sunken: dark ? #111317 : #f2f4f7;
+    out property <color> border:         dark ? #262a32 : #e2e5ea;
+    out property <color> border-strong:  dark ? #353b45 : #cfd4dc;
+
+    out property <color> text-primary:   dark ? #eceef2 : #14171c;
+    out property <color> text-secondary: dark ? #a2a9b5 : #555e6c;
+    out property <color> text-tertiary:  dark ? #6f7784 : #8a929f;
+
+    // ---- Accent -----------------------------------------------------------
+    out property <color> accent:         dark ? #7b93ff : #3156e0;
+    out property <color> accent-hover:   dark ? #95a8ff : #2547c4;
+    out property <color> accent-subtle:  dark ? #1d2440 : #e9eefd;
+    out property <color> on-accent:      dark ? #0e1014 : #ffffff;
+
+    // ---- Status -----------------------------------------------------------
+    out property <color> success:        dark ? #5cc98d : #1d7f47;
+    out property <color> success-subtle: dark ? #15291f : #e5f4ec;
+    out property <color> warning:        dark ? #f0b84f : #9a6200;
+    out property <color> warning-subtle: dark ? #2e2414 : #fdf3e1;
+    out property <color> warning-border: dark ? #4a3a1c : #f1d9a8;
+    out property <color> danger:         dark ? #f07a8a : #c2304a;
+
+    // Capacity-bar segments
+    out property <color> seg-backups:    accent;
+    out property <color> seg-app:        dark ? #4b5568 : #9aa4b5;
+    out property <color> seg-free:       dark ? #22262e : #e6e9ee;
+
+    // ---- Elevation --------------------------------------------------------
+    out property <color> shadow:         dark ? #00000000 : #0f172a14;
+    out property <color> shadow-hover:   dark ? #00000066 : #0f172a24;
+}
