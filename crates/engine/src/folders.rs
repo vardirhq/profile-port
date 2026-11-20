@@ -69,11 +69,16 @@ impl FolderMap {
 }
 
 /// Does this path look like it is synchronised to a cloud service? Restoring
-/// there uploads the customer's files (docs/windows-gotchas.md).
+/// there uploads the customer's files (docs/platform-gotchas.md).
 pub fn is_cloud_synced(path: &Path) -> bool {
     path.components().any(|c| {
         let s = c.as_os_str().to_string_lossy().to_lowercase();
-        s.starts_with("onedrive") || s == "dropbox" || s == "google drive" || s == "icloud drive"
+        s.starts_with("onedrive")
+            || s == "dropbox"
+            || s == "google drive"
+            || s == "icloud drive"
+            // macOS iCloud Drive: ~/Library/Mobile Documents/com~apple~CloudDocs
+            || s == "mobile documents"
     })
 }
 

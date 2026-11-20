@@ -1,4 +1,6 @@
-//! Linux / Unix: profiles from /etc/passwd, folders from XDG user-dirs.
+//! Linux / Unix: profiles from /etc/passwd (macOS: /Users), folders from
+//! XDG user-dirs (macOS uses fixed English folder names; Finder translates
+//! them for display only).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,6 +9,29 @@ use profileport_package::KnownFolder;
 
 use super::ProfileInfo;
 
+/// macOS keeps people in Directory Services, not /etc/passwd; their homes
+/// are the folders in /Users (except the shared and guest ones).
+#[cfg(target_os = "macos")]
+pub(super) fn list_profiles() -> Vec<ProfileInfo> {
+    let current = std::env::var_os("HOME").map(PathBuf::from);
+    let Ok(entries) = fs::read_dir("/Users") else { return Vec::new() };
+    let mut out: Vec<ProfileInfo> = entries
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .filter_map(|e| {
+            let name = e.file_name().into_string().ok()?;
+            if name.starts_with('.') || name == "Shared" || name == "Guest" {
+                return None;
+            }
+            let path = e.path();
+            Some(ProfileInfo { current: current.as_deref() == Some(path.as_path()), name, path, sid: None })
+        })
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+#[cfg(not(target_os = "macos"))]
 pub(super) fn list_profiles() -> Vec<ProfileInfo> {
     let current = std::env::var_os("HOME").map(PathBuf::from);
     let Ok(passwd) = fs::read_to_string("/etc/passwd") else {

@@ -23,6 +23,11 @@ pub const DEFAULT_EXCLUSIONS: &[&str] = &[
     "AppData/Local/Microsoft/Edge/User Data/*/Code Cache",
     "AppData/Local/Microsoft/Edge/User Data/*/GPUCache",
     "AppData/Local/Mozilla/Firefox/Profiles/*/cache2",
+    // Linux (XDG) and macOS caches and trash.
+    ".cache",
+    ".local/share/Trash",
+    ".Trash",
+    "Library/Caches",
 ];
 
 impl Exclusions {

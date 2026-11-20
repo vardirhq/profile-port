@@ -155,6 +155,32 @@ fn linux_names_are_made_valid_for_windows_and_reported() {
 }
 
 #[test]
+fn linux_case_twins_survive_on_a_mac() {
+    let tmp = tempfile::tempdir().unwrap();
+    let pkg = tmp.path().join("pkg");
+    let code = linux_style_package(&pkg);
+    let dst = tmp.path().join("Users/anna");
+    fs::create_dir_all(dst.join("Documents")).unwrap();
+    let reader = PackageReader::open(&pkg, &code).unwrap();
+    let opts = RestoreOptions {
+        name_rules: NameRules::Mac,
+        known_folders: Some(vec![(KnownFolder::Documents, dst.join("Documents"))]),
+        ..Default::default()
+    };
+    let r = restore(&reader, &dst, &opts, &mut |_| {}).unwrap();
+    assert!(r.failed.is_empty(), "{r:#?}");
+    let d = dst.join("Documents");
+    // Mac allows these names as they are…
+    assert_eq!(read(d.join("notes: draft?.txt")), "notes");
+    assert_eq!(read(d.join("CON")), "con");
+    // …but Report.txt and report.txt would be one file.
+    assert_eq!(read(d.join("Report.txt")), "upper");
+    assert_eq!(read(d.join("report (restored).txt")), "lower");
+    let renamed: Vec<_> = r.renamed.iter().map(|(p, _, why)| (p.as_str(), *why)).collect();
+    assert_eq!(renamed, [("Documents/report.txt", RenameReason::CaseCollision)]);
+}
+
+#[test]
 fn keep_both_rerun_creates_no_duplicates() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");

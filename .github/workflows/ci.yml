@@ -11,7 +11,7 @@ env:
 
 jobs:
   linux:
-    name: Linux (engine tests)
+    name: Linux (tests, CLI build, smoke test)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -23,6 +23,28 @@ jobs:
       # The desktop app needs X11/font libraries; the engine is what matters here.
       - run: cargo clippy --workspace --exclude profileport-desktop --all-targets -- -D warnings
       - run: cargo test --workspace --exclude profileport-desktop
+      - run: cargo build --release -p profileport-cli
+      - name: Linux smoke test
+        run: scripts/unix-smoke.sh target/release/profileport-cli
+
+  macos:
+    name: macOS (tests, CLI build, smoke test)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Unit and integration tests
+        run: cargo test --workspace --exclude profileport-desktop
+      - name: Release build
+        run: cargo build --release -p profileport-cli
+      - name: macOS smoke test
+        run: scripts/unix-smoke.sh target/release/profileport-cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: profileport-cli-macos
+          path: target/release/profileport-cli
 
   windows:
     name: Windows (tests, builds, smoke test)

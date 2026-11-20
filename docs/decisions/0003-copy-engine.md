@@ -26,7 +26,7 @@ is blocking anyway) and a channel to report progress to the UI.
   `SeBackupPrivilege` enabled) so ACL-protected files in other profiles are
   readable, and `FILE_FLAG_SEQUENTIAL_SCAN`.
 - Use `FILE_FLAG_OPEN_REPARSE_POINT`: **never follow** junctions/symlinks;
-  record them as links (see [gotchas](../windows-gotchas.md) — profiles
+  record them as links (see [gotchas](../platform-gotchas.md) — profiles
   contain legacy junctions that loop).
 - Enumerate alternate data streams with `FindFirstStreamW`.
 - Always use `\\?\` paths (no 260-character limit).

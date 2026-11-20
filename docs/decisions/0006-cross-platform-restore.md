@@ -1,7 +1,8 @@
 # 0006 — Cross-platform restore and standard folders
 
-**Status:** Proposed. The foundation is built and tested; which platforms to
-ship for is open.
+**Status:** Accepted. Windows, Linux and macOS, in any direction. Windows
+is the primary platform; Linux and macOS are supported targets and sources
+for the CLI, tested in CI.
 
 ## Context
 
@@ -55,11 +56,15 @@ systems was:
 - The engine and CLI build and test on Linux today. The desktop app
   (Slint) also runs on Linux and macOS, but the product is Windows-first
   and nothing is packaged for other platforms yet.
-- **Open questions for the product:**
-  - Is Linux a real destination for the store's customers? Windows → **macOS**
-    is probably the more common retail migration. It needs macOS profile
-    discovery (`dscl`), testing on APFS (case-insensitive by default), and
-    a macOS CI runner.
-  - Should the restore UI let the technician review the folder mapping
-    ("Documents → ~/Dokumenter") before writing? Recommended: yes, the CLI
-    already prints it.
+- CI runs the test suite and an end-to-end smoke test of the CLI on
+  Windows, Linux and macOS (`scripts/windows-smoke.ps1`,
+  `scripts/unix-smoke.sh`).
+- macOS specifics: profiles are the folders in `/Users` (people are in
+  Directory Services, not `/etc/passwd`); standard folders have fixed
+  English names (Finder translates them for display only); names follow
+  POSIX rules but are case-insensitive by default (`NameRules::Mac`).
+  See the macOS section of [Platform gotchas](../platform-gotchas.md).
+- Still open: macOS extended attributes (`com.apple.quarantine`, Finder
+  tags) are not carried yet, and the restore UI should let the technician
+  review the folder mapping ("Documents → ~/Dokumenter") before writing;
+  the CLI already prints it.
