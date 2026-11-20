@@ -7,7 +7,6 @@ description = "ProfilePort export / restore engine"
 
 [dependencies]
 blake3 = "1.8.7"
-filetime = "0.2.30"
 profileport-package = { version = "0.1.0", path = "../package" }
 thiserror = "2.0.21"
 

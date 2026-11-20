@@ -98,7 +98,8 @@ mod tests {
     #[test]
     fn timestamps_roundtrip_including_pre_1970() {
         for secs in [-86_400i64 * 365 * 30, -1, 0, 1, 1_700_000_000] {
-            for nanos in [0u32, 1, 999_999_999] {
+            // Windows file times have 100 ns resolution.
+            for nanos in [0u32, 100, 999_999_900] {
                 let t = Timestamp { secs, nanos };
                 assert_eq!(timestamp(Ok(to_system_time(&t).unwrap())).unwrap(), t);
             }

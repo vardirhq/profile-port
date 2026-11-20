@@ -12,7 +12,6 @@ use std::fs::{self, File};
 use std::io::{self, BufWriter, Read};
 use std::path::{Path, PathBuf};
 
-use filetime::FileTime;
 use profileport_package::format::split_rel_path;
 use profileport_package::{Entry, Error as PkgError, FileEntry, PackageReader, SkipReason};
 
@@ -261,7 +260,9 @@ fn restore_file(reader: &PackageReader, root: &Path, f: &FileEntry, opts: &Resto
     // Timestamps before read-only: Windows can't set times on a read-only
     // file.
     if let Some(t) = f.meta.modified.as_ref().and_then(to_system_time) {
-        let _ = filetime::set_file_mtime(&dest, FileTime::from_system_time(t));
+        if let Ok(file) = fs::OpenOptions::new().write(true).open(&dest) {
+            let _ = file.set_times(fs::FileTimes::new().set_modified(t));
+        }
     }
     if opts.verify {
         match hash_file(&dest) {
