@@ -376,3 +376,37 @@ fn alt_streams_roundtrip_and_are_validated() {
     assert_eq!((streams[0].0.as_str(), streams[0].1.as_str()), ("a.pdf", "Zone.Identifier"));
     assert_eq!(streams[0].2.as_slice(), motw);
 }
+
+#[test]
+fn discard_removes_an_empty_package_only() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("pkg");
+    let (w, _) = PackageWriter::create(&dir, "1", begin(), opts()).unwrap();
+    w.discard().unwrap();
+    assert!(!dir.exists());
+    assert!(tmp.path().is_dir(), "the parent folder is kept");
+}
+
+#[test]
+fn discard_refuses_a_package_with_file_data() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("pkg");
+    let (mut w, code) = PackageWriter::create(&dir, "1", begin(), opts()).unwrap();
+    let d = data(5000, 1);
+    w.add_file("a.bin", Meta::default(), d.len() as u64, &mut Cursor::new(&d), &mut unchanged()).unwrap();
+    w.commit().unwrap();
+    assert!(matches!(w.discard(), Err(Error::NotDiscardable)));
+    let r = PackageReader::open(&dir, &code).unwrap();
+    assert_eq!(read_all(&r, files_of(&r.manifest().unwrap())[0]), d, "nothing was deleted");
+}
+
+#[test]
+fn discard_refuses_a_folder_with_unexpected_files() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("pkg");
+    let (w, code) = PackageWriter::create(&dir, "1", begin(), opts()).unwrap();
+    fs::write(dir.join("notes.txt"), b"not ours").unwrap();
+    assert!(matches!(w.discard(), Err(Error::NotDiscardable)));
+    assert!(dir.join("notes.txt").is_file());
+    PackageReader::open(&dir, &code).expect("the package itself is intact");
+}

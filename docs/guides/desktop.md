@@ -57,8 +57,9 @@ folders resolved outside the profile may also be included. Individual folder
 selection is not currently available. Links are recorded, not followed. See
 [coverage and exclusions](coverage.md).
 
-**Cancel** at the code confirmation step leaves an empty interrupted package
-on the drive. If the app or computer stops after copying begins, retain the
+**Cancel** at the code confirmation step removes the empty package from the
+drive; nothing has been copied at that point. If it cannot be removed, the
+status area names its folder. If the app or computer stops after copying begins, retain the
 package and code and use the resume procedure below. If the drive was removed,
 reconnect it and confirm its path before proceeding.
 

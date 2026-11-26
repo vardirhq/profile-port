@@ -64,8 +64,8 @@ report. Capture non-sensitive evidence deliberately, checking it before sharing.
    that already-identical files are counted without overwriting anything.
 5. **Wrong and missing code.** Enter an incorrect code and verify that opening,
    verification and restore fail without modifying the destination. Test
-   cancelling at the code confirmation screen: it leaves an empty interrupted
-   package. Never treat that package as a finished backup.
+   cancelling at the code confirmation screen: the empty package should be
+   removed from the drive, and nothing else in `ProfilePort/transfers` touched.
 6. **Locked or inaccessible file.** Keep the disposable fixture locked or deny
    read access using an appropriate test account. Confirm that the actual
    report distinguishes skipped/failed data, and that a successful verification

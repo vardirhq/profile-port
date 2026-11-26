@@ -89,6 +89,13 @@ impl PreparedExport {
         self.writer.dir()
     }
 
+    /// Delete the still-empty package instead of running it (the technician
+    /// cancelled before copying). Refuses, deleting nothing, if the package
+    /// folder holds anything a new package doesn't.
+    pub fn discard(self) -> Result<(), ExportError> {
+        Ok(self.writer.discard()?)
+    }
+
     /// Copy the profile into the package.
     pub fn run(
         self,

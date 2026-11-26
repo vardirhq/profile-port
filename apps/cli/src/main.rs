@@ -205,7 +205,13 @@ fn run_export(
     // interrupted it is the only way to resume.
     show_code(ticket, &code);
     if !no_confirm {
-        confirm_code(&code, prepared.package_dir())?;
+        if let Err(e) = confirm_code(&code) {
+            let dir = prepared.package_dir().to_path_buf();
+            return Err(match prepared.discard() {
+                Ok(()) => format!("{e}. Nothing was copied and the empty backup was removed.").into(),
+                Err(d) => format!("{e}. The empty backup at {} could not be removed ({d}).", dir.display()).into(),
+            });
+        }
     }
 
     println!("\nBacking up …");
@@ -229,14 +235,10 @@ fn show_code(ticket: &str, code: &TransferCode) {
     println!("  └──────────────────────────────────────────────────────────────┘");
 }
 
-fn confirm_code(code: &TransferCode, package_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn confirm_code(code: &TransferCode) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         let Some(line) = prompt("\nType the code back to confirm you've written it down: ")? else {
-            return Err(format!(
-                "no confirmation given. The empty backup is at {}; delete it or start again.",
-                package_dir.display()
-            )
-            .into());
+            return Err("no confirmation given".into());
         };
         match TransferCode::parse(&line) {
             Ok(typed) if typed == *code => {
@@ -352,6 +354,9 @@ fn run_restore(
         println!("✔ Restore complete");
     } else {
         println!("⚠ Restore finished with items to review");
+    }
+    if r.read_back_skipped {
+        println!("  Restored files were NOT read back and checked (--no-verify). Check them before relying on them.");
     }
     println!("  {} files restored ({}), {} verified, {} folders", r.files, human_bytes(r.bytes), r.verified, r.dirs);
     if r.already_present > 0 {

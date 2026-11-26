@@ -22,6 +22,16 @@ pub fn prepare(source: &Path, drive: &Path, ticket: &str) -> Result<(PreparedExp
     Ok(engine::prepare_export(&source, &transfers_dir(&drive), ticket, &labels, &Default::default())?)
 }
 
+/// Remove a prepared package that the technician cancelled before copying.
+/// Returns the text to show.
+pub fn cancel(job: PreparedExport) -> String {
+    let dir = job.package_dir().to_path_buf();
+    match job.discard() {
+        Ok(()) => "Nothing was copied. The empty package was removed from the drive.".into(),
+        Err(e) => format!("Nothing was copied, but the empty package at {} could not be removed: {e}", dir.display()),
+    }
+}
+
 pub fn verify_package(path: &Path, code: &str, progress: &mut dyn FnMut(&Progress)) -> Result<VerifyReport> {
     let code = TransferCode::parse(code)?;
     let reader = PackageReader::open(path, &code)?;
@@ -84,6 +94,24 @@ mod tests {
         let result = restore_package(&report.package_dir, &target, &code.to_string(), false, &mut |_| {});
         assert!(result.is_err());
         assert!(!target.join("note.txt").exists());
+    }
+
+    #[test]
+    fn cancelling_before_copying_removes_the_empty_package() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        let drive = temp.path().join("drive");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(&drive).unwrap();
+        fs::write(source.join("note.txt"), b"important").unwrap();
+        let (prepared, _code) = prepare(&source, &drive, "123").unwrap();
+        let dir = prepared.package_dir().to_path_buf();
+        assert!(dir.is_dir());
+        let message = cancel(prepared);
+        assert!(message.contains("removed"), "{message}");
+        assert!(!dir.exists());
+        assert!(transfers_dir(&drive).is_dir(), "only the package itself is removed");
+        assert!(source.join("note.txt").exists());
     }
 
     #[test]

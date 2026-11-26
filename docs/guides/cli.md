@@ -40,8 +40,11 @@ are copied subject to default exclusions and access.
 `--computer` and `--profile` override encrypted source labels. `--no-confirm`
 skips the type-back for scripted use; it does not make recovery possible if
 the code was not retained. CLI output includes the code on export. Avoid
-capturing or sharing it in logs. An interrupted prompt can leave an empty
-package; an interrupted copy may be resumable.
+capturing or sharing it in logs. If the type-back prompt ends without a
+confirmation (end of input), the empty package is removed; if it cannot be
+removed, the error names its folder. Killing the process at the prompt (for
+example with Ctrl+C) can still leave an empty package. An interrupted copy may
+be resumable.
 
 Inspect the report for skipped files, files changed while copying, exclusions,
 link and exclusion counts, the package path, and known folders. The CLI limits
@@ -84,11 +87,10 @@ review the reported names. `--allow-cloud-folders` bypasses the CLI's prompt
 for detected cloud-synced known folders; detection is heuristic and incomplete.
 Confirm the destination and upload implications before using it.
 
-`--no-verify` disables restore read-back. The CLI may still print a successful
-completion and, in an interactive terminal, offer to delete the package based
-on its restore-success predicate. Neither the message nor that offer proves
-read-back verification occurred. Decline deletion until you have independently
-verified the result and no longer need the package.
+`--no-verify` disables restore read-back. Such a restore is never reported as
+complete: it finishes with items to review (exit code `1`), says the files were
+not checked, and does not offer to delete the package. Files already present
+with identical content are still compared.
 
 The optional `--code` argument to resume, verify and restore can expose the
 code in shell history or process listings. Omit it to use the interactive

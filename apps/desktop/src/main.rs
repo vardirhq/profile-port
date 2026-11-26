@@ -11,10 +11,17 @@ use std::{
     cell::RefCell,
     path::PathBuf,
     rc::Rc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
-type Prepared = Rc<RefCell<Option<(PreparedExport, TransferCode)>>>;
+/// The package prepared for backup, waiting for the code to be confirmed.
+/// Shared with the worker thread that prepares it, hence `Arc<Mutex>`.
+type Prepared = Arc<Mutex<Option<(PreparedExport, TransferCode)>>>;
+
+fn take_prepared(prepared: &Prepared) -> Option<(PreparedExport, TransferCode)> {
+    prepared.lock().unwrap_or_else(|e| e.into_inner()).take()
+}
 
 fn progress_callback(weak: slint::Weak<AppWindow>) -> impl FnMut(&Progress) {
     let mut last = Instant::now() - Duration::from_secs(1);
@@ -178,55 +185,72 @@ fn main() -> Result<(), slint::PlatformError> {
             app.set_package_path(path.to_string_lossy().as_ref().into());
         }
     });
-    let prepared: Prepared = Rc::new(RefCell::new(None));
+    let prepared: Prepared = Arc::new(Mutex::new(None));
     let weak = app.as_weak();
     let pending = prepared.clone();
     app.on_cancel_preparation(move || {
         if let Some(app) = weak.upgrade() {
-            pending.borrow_mut().take();
             app.set_awaiting_confirmation(false);
             app.set_displayed_code("".into());
             app.set_code_entry("".into());
             app.set_status("Backup cancelled before copying".into());
-            app.set_details("An empty, interrupted package remains on the drive.".into());
+            let details = match take_prepared(&pending) {
+                Some((job, _)) => transfer::cancel(job),
+                None => "Nothing was copied.".into(),
+            };
+            app.set_details(details.into());
         }
     });
     let weak = app.as_weak();
     let pending = prepared.clone();
     app.on_prepare_backup(move || {
-        if let Some(app) = weak.upgrade() {
-            match transfer::prepare(
-                &PathBuf::from(app.get_source().as_str()),
-                &PathBuf::from(app.get_drive().as_str()),
-                app.get_ticket().as_str(),
-            ) {
-                Ok((job, code)) => {
-                    app.set_package_path(job.package_dir().to_string_lossy().as_ref().into());
-                    app.set_displayed_code(code.to_string().into());
-                    app.set_code_entry("".into());
-                    app.set_awaiting_confirmation(true);
-                    app.set_status("Write down the transfer code".into());
-                    app.set_details("The backup has not started. Type the code to confirm it before copying.".into());
-                    *pending.borrow_mut() = Some((job, code));
+        let Some(app) = weak.upgrade() else { return };
+        let source = PathBuf::from(app.get_source().as_str());
+        let drive = PathBuf::from(app.get_drive().as_str());
+        let ticket = app.get_ticket().to_string();
+        app.set_busy(true);
+        app.set_status("Preparing backup…".into());
+        app.set_details("Creating the package and its transfer code.".into());
+        let weak = weak.clone();
+        let pending = pending.clone();
+        // Key derivation (Argon2id) takes a noticeable moment: keep it off
+        // the UI thread so the window stays responsive.
+        std::thread::spawn(move || {
+            let result = transfer::prepare(&source, &drive, &ticket).map_err(|e| e.to_string());
+            let _ = slint::invoke_from_event_loop(move || {
+                let Some(app) = weak.upgrade() else { return };
+                app.set_busy(false);
+                match result {
+                    Ok((job, code)) => {
+                        app.set_package_path(job.package_dir().to_string_lossy().as_ref().into());
+                        app.set_displayed_code(code.to_string().into());
+                        app.set_code_entry("".into());
+                        app.set_awaiting_confirmation(true);
+                        app.set_status("Write down the transfer code".into());
+                        app.set_details(
+                            "The backup has not started. Type the code to confirm it before copying.".into(),
+                        );
+                        *pending.lock().unwrap_or_else(|e| e.into_inner()) = Some((job, code));
+                    }
+                    Err(e) => {
+                        app.set_status("Could not prepare backup".into());
+                        app.set_details(e.into());
+                    }
                 }
-                Err(e) => {
-                    app.set_status("Could not prepare backup".into());
-                    app.set_details(e.to_string().into());
-                }
-            }
-        }
+            });
+        });
     });
     let weak = app.as_weak();
     app.on_confirm_backup(move || {
         if let Some(app) = weak.upgrade() {
-            let correct = prepared.borrow().as_ref().is_some_and(|(_, code)| {
+            let correct = prepared.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|(_, code)| {
                 TransferCode::parse(app.get_code_entry().as_str()).is_ok_and(|typed| typed == *code)
             });
             if !correct {
                 app.set_status("Code does not match — try again".into());
                 return;
             }
-            let Some((job, code)) = prepared.borrow_mut().take() else {
+            let Some((job, code)) = take_prepared(&prepared) else {
                 return;
             };
             app.set_awaiting_confirmation(false);

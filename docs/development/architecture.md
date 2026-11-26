@@ -14,9 +14,9 @@ decision records describe design intent and can include future work.
 
 The desktop and CLI call the engine directly. The desktop's `transfer.rs` adds
 preflight checks and a path-based cloud warning; it is not a separate service.
-The desktop runs long copy, resume, verify and restore operations on worker
-threads and posts progress/results to the UI event loop. Preparing a package is
-performed in the UI callback. The current UI has no cancellation of an active
+The desktop runs package preparation (including key derivation) and long copy,
+resume, verify and restore operations on worker threads, and posts
+progress/results to the UI event loop. The current UI has no cancellation of an active
 operation, no persisted report and no overall-size-based progress estimate.
 
 ## Export
@@ -26,7 +26,8 @@ operation, no persisted report and no overall-size-based progress estimate.
    creates a uniquely named package under `ProfilePort/transfers`.
 2. `prepare_export` creates a package and code; the desktop requires the user
    to type the code back before `PreparedExport::run`. The package already
-   exists when the code is shown. Canceling leaves it incomplete.
+   exists when the code is shown. Canceling calls `PreparedExport::discard`,
+   which removes it only if it still holds just the files a new package has.
 3. The engine walks the profile and discovered external known-folder roots,
    applies exclusions and records links, metadata, skipped files and changed
    files. `ExportOptions` supplies exclusions and writer options. Current UI
