@@ -56,6 +56,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Unit and integration tests
         run: cargo test --workspace --exclude profileport-desktop
+      - name: Desktop transfer tests
+        run: cargo test -p profileport-desktop
       - name: Release builds
         run: cargo build --release -p profileport-cli -p profileport-desktop
       - name: Windows smoke test (junctions, long paths, locked files, attributes, ADS)

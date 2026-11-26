@@ -16,7 +16,8 @@ anything that couldn't be copied.
 > - **Desktop UI:** dashboard prototype with sample data, not yet wired to
 >   the engine.
 
-![Dashboard](docs/screenshots/dashboard-light.png)
+The screenshots in `docs/screenshots/` show the earlier dashboard prototype;
+the current transfer screens have not yet been captured or visually reviewed.
 
 ## Stack
 
@@ -30,7 +31,7 @@ why Slint rather than Tauri.
 crates/package/        encrypted transfer package format (docs/package-format.md)
 crates/engine/         export / resume / verify / restore engine
 apps/cli/              `profileport-cli` command-line tool
-apps/desktop/          Slint desktop app (prototype)
+apps/desktop/          Slint desktop transfer app
   ui/theme.slint       design tokens (colours, type, spacing, motion)
   ui/components.slint  reusable components
   ui/app.slint         main window / dashboard
@@ -84,7 +85,8 @@ interrupted restore is safe.
 ```sh
 cargo test --workspace --exclude profileport-desktop   # engine, format, CLI
 cargo build --release -p profileport-cli
-cargo run -p profileport-desktop          # run the prototype
+cargo test -p profileport-desktop           # desktop transfer integration tests
+cargo run -p profileport-desktop          # run the desktop app
 PROFILEPORT_THEME=dark cargo run -p profileport-desktop
 scripts/screenshot.sh                     # regenerate docs/screenshots (Linux + Xvfb)
 ```
@@ -118,5 +120,6 @@ this on every push and attaches both `.exe` files to the run as an artifact.
 1. **Engine as a CLI first:** profile discovery, export of known folders into
    the package format with manifest and hashes, restore to a different
    username, verification.
-2. **Then the GUI on top**, once the engine survives pulled-USB tests.
+2. **Desktop transfer flow:** continue validating the GUI and engine together,
+   including pulled-USB tests on real Windows hardware.
 3. **Then** installed-app inventory, browser adapters and USB management.
