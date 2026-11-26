@@ -103,8 +103,24 @@ impl RestoreReport {
         self.failed.is_empty()
             && self.backup_complete
             && self.skipped_at_backup.is_empty()
+            && self.changed_at_backup.is_empty()
             && self.incomplete_at_backup.is_empty()
             && self.conflicts.iter().all(|(_, c)| matches!(c, ConflictOutcome::RestoredAs(_)))
+    }
+}
+
+#[cfg(test)]
+mod report_tests {
+    use super::*;
+
+    #[test]
+    fn changed_source_files_require_review() {
+        let report = RestoreReport {
+            backup_complete: true,
+            changed_at_backup: vec!["Documents/notes.txt".into()],
+            ..Default::default()
+        };
+        assert!(!report.fully_successful());
     }
 }
 
