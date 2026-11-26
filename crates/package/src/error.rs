@@ -23,6 +23,8 @@ pub enum Error {
     UnsafePath(String),
     #[error("this package is already complete")]
     AlreadyComplete,
+    #[error("the package already holds backed-up data or other files, so it was not deleted")]
+    NotDiscardable,
     #[error("invalid ticket number {0:?}: use 1–32 letters, digits, '-' or '_'")]
     InvalidTicket(String),
 }

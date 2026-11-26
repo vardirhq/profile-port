@@ -67,7 +67,7 @@ it unless asked.
 | `code.rs` | `TransferCode`: 10 Crockford base32 data symbols plus 2 check symbols; forgiving parsing |
 | `crypto.rs` | XChaCha20-Poly1305 seal/open, Argon2id key wrapping, `KdfParams` (`recommended()`, and `insecure_fast_for_tests()`, which tests must use) |
 | `log.rs` | Append-only encrypted `manifest.log`. A torn final frame is discarded; damage anywhere earlier is `Error::Corrupt`. |
-| `writer.rs` | `PackageWriter`: `create`, `resume` (replays the log), `add_*`, `commit` (sync packs → append records → sync log), `finish`. `WriterOptions` sets chunk and pack sizes, the commit batch size and the KDF. |
+| `writer.rs` | `PackageWriter`: `create`, `resume` (replays the log), `add_*`, `commit` (sync packs → append records → sync log), `finish`, `discard` (removes a package with no file data, file by file). `WriterOptions` sets chunk and pack sizes, the commit batch size and the KDF. |
 | `reader.rs` | `PackageReader::open(dir, code)`, `manifest()` (builds `Entry` values from `Record`s), `read_file`; `read_info` / `list_packages` need no code |
 | `error.rs` | The crate's single `Error` enum (thiserror) |
 
@@ -80,7 +80,7 @@ On disk a package is `<drive>/ProfilePort/transfers/<ticket>-<hex>/` holding
 | File | Contents |
 |---|---|
 | `lib.rs` | Public re-exports, `Progress`, `SkipItem`, `transfers_dir(drive)` |
-| `export.rs` | `prepare_export` → `PreparedExport::run`; `export` (both steps in one call); `resume_export`; `ExportOptions` (including the hidden `crash_after_bytes` test hook); `ExportReport`; the private `Job` that does the walk |
+| `export.rs` | `prepare_export` → `PreparedExport::run` (or `::discard` if cancelled); `export` (both steps in one call); `resume_export`; `ExportOptions` (including the hidden `crash_after_bytes` test hook); `ExportReport`; the private `Job` that does the walk |
 | `restore.rs` | `restore` and `verify`; `RestoreOptions`, `ConflictPolicy`, `RestoreReport::fully_successful`, `VerifyReport`; destination path checks (`safe_dir`, `passes_through_link`) |
 | `folders.rs` | `FolderMap`: maps a source known folder (or an `@Name` extra root) to the target's location; `is_cloud_synced` (a heuristic based on path names) |
 | `names.rs` | `NameRules` (`Posix`/`Mac`/`Windows`): adapts each path component for the target, and decides whether names that differ only in case collide |
@@ -225,8 +225,10 @@ it a label in the CLI's `print_skips`.
   `slint::invoke_from_event_loop`. Progress uses `progress_callback`, which
   is throttled to 150 ms. Don't touch `AppWindow` from the worker thread;
   capture `app.as_weak()` and upgrade it inside the event-loop closure.
-  `prepare_backup` runs on the UI thread, and there is no cancellation of a
-  running job.
+  `prepare_backup` spawns its own thread (Argon2id is slow) and hands the
+  `PreparedExport` back through the `Prepared` `Arc<Mutex>`. There is no
+  cancellation of a running job; Cancel at code confirmation calls
+  `transfer::cancel`, which discards the empty package.
 - `transfer.rs` holds the logic that can be tested without a UI: preflight
   checks (drive outside source), the cloud-target check, and default
   options. Put new behaviour there with a `#[cfg(test)]` test, not in the

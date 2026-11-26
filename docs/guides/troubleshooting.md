@@ -24,11 +24,12 @@ in a public issue.
 The CLI's `--code` option places the code in the command line, which can be
 visible in shell history or process inspection; omit it for an interactive
 prompt when possible. `--no-confirm` skips the code type-back and is intended
-for scripted use. `--no-verify` disables read-back of restored files: do not
-interpret a successful exit or completion message as read-back verification in
-that mode. In interactive use the CLI may offer to delete a package after it
-considers the restore fully successful; retain it until your own checks are
-complete. The GUI does not expose this deletion prompt.
+for scripted use. `--no-verify` disables read-back of restored files; the
+restore then always finishes with items to review (exit code `1`) and no
+deletion is offered. In interactive use the CLI may offer to delete a package
+after a restore it considers fully successful (read back and nothing to
+review); retain it until your own checks are complete. The GUI does not expose
+this deletion prompt.
 
 Status files and package lists are informational, not proof of content
 integrity. A finished export, stored-file verification, and a verified restore

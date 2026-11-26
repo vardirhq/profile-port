@@ -336,3 +336,28 @@ fn restoring_twice_is_safe_and_idempotent() {
     assert!(second.conflicts.is_empty());
     assert_eq!(files_under(&s.dst), expected_files(&s.src));
 }
+
+#[test]
+fn restore_without_read_back_is_not_reported_as_success() {
+    let s = setup();
+    let (report, code) = export(&s.src, &transfers_dir(&s.drive), "1", &labels(), &opts(), &mut |_| {}).unwrap();
+    let reader = PackageReader::open(&report.package_dir, &code).unwrap();
+    let rr = restore(&reader, &s.dst, &RestoreOptions { verify: false, ..Default::default() }, &mut |_| {}).unwrap();
+    assert!(rr.read_back_skipped);
+    assert_eq!(rr.verified, 0);
+    assert!(rr.failed.is_empty() && rr.conflicts.is_empty());
+    assert!(!rr.fully_successful(), "files were written but never checked");
+    assert_eq!(files_under(&s.dst), expected_files(&s.src));
+}
+
+#[test]
+fn prepared_export_can_be_discarded_before_copying() {
+    let s = setup();
+    let transfers = transfers_dir(&s.drive);
+    let (prepared, _code) = prepare_export(&s.src, &transfers, "1", &labels(), &opts()).unwrap();
+    let dir = prepared.package_dir().to_path_buf();
+    prepared.discard().unwrap();
+    assert!(!dir.exists());
+    assert!(transfers.is_dir());
+    assert!(s.src.join("Documents/report.docx").is_file(), "the source is untouched");
+}

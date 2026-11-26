@@ -49,10 +49,10 @@ a substitute for checking the encrypted manifest/content.
 - Restore validates package paths and avoids following destination links; it
   leaves conflicts alone by default. Still verify the selected target and test
   the behavior on the intended filesystem and Windows account before use.
-- `--no-verify` on the CLI disables restore read-back. The current CLI's
-  successful-restore predicate does not itself prove read-back was enabled;
-  do not treat its completion message or deletion prompt as verification when
-  that flag was used.
+- `--no-verify` on the CLI disables restore read-back. The restore report
+  records this (`read_back_skipped`), so such a restore is never counted as
+  fully successful: the CLI exits with `1` and does not offer to delete the
+  package.
 
 ## Operational handling
 

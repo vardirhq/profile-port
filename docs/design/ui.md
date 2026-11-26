@@ -11,7 +11,7 @@ not the current screens. For operator instructions see the
 
 - **Back up:** choose a discovered profile or type its path, enter an existing
   drive root and ticket, prepare a package, then record and type back the code.
-  Canceling at confirmation leaves an empty interrupted package. The screen
+  Canceling at confirmation removes the still-empty package. The screen
   reports progress and export details.
 - **Verify or restore:** enter a drive root and find packages, or enter a
   package folder directly; enter the code; optionally resume an incomplete

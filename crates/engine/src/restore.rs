@@ -73,6 +73,9 @@ pub struct RestoreReport {
     pub already_present: u64,
     /// Files whose written copy was re-read and matched the package hash.
     pub verified: u64,
+    /// Read-back verification was turned off ([`RestoreOptions::verify`] was
+    /// false), so restored files were not checked against the package.
+    pub read_back_skipped: bool,
     pub conflicts: Vec<(String, ConflictOutcome)>,
     /// Files restored under a different name: (package path, path written
     /// relative to its destination folder, reason).
@@ -98,9 +101,10 @@ pub struct RestoreReport {
 
 impl RestoreReport {
     /// Everything in the backup arrived and was verified, and the backup
-    /// itself was complete and clean.
+    /// itself was complete and clean. Never true when read-back was skipped.
     pub fn fully_successful(&self) -> bool {
-        self.failed.is_empty()
+        !self.read_back_skipped
+            && self.failed.is_empty()
             && self.backup_complete
             && self.skipped_at_backup.is_empty()
             && self.changed_at_backup.is_empty()
@@ -121,6 +125,14 @@ mod report_tests {
             ..Default::default()
         };
         assert!(!report.fully_successful());
+    }
+
+    #[test]
+    fn skipped_read_back_is_not_success() {
+        let clean = RestoreReport { backup_complete: true, ..Default::default() };
+        assert!(clean.fully_successful());
+        let unverified = RestoreReport { read_back_skipped: true, ..clean };
+        assert!(!unverified.fully_successful());
     }
 }
 
@@ -202,6 +214,7 @@ pub fn restore(
         used_folders: HashSet::new(),
         report: RestoreReport {
             backup_complete: manifest.complete,
+            read_back_skipped: !opts.verify,
             incomplete_at_backup: manifest.incomplete_files.clone(),
             source_os: manifest.begin.source_os.clone(),
             ..Default::default()

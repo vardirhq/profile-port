@@ -488,6 +488,40 @@ impl PackageWriter {
         write_atomic(&self.dir.join(STATUS_FILE), &to_cbor(&self.status))
     }
 
+    /// Delete a package that no file data has been written to, for example
+    /// when the technician cancels before the copy starts.
+    ///
+    /// Only the files [`PackageWriter::create`] makes are removed, one by
+    /// one, and directories are removed only when empty. If the package
+    /// holds pack data or anything unexpected, nothing is deleted and an
+    /// error is returned.
+    pub fn discard(self) -> Result<()> {
+        if self.pack.is_some() || self.pack_index != 0 || self.next_file_id != 0 {
+            return Err(Error::NotDiscardable);
+        }
+        let dir = self.dir.clone();
+        drop(self); // close the log before deleting it (required on Windows)
+        let packs = dir.join(PACKS_DIR);
+        let expected = [HEADER_FILE, STATUS_FILE, LOG_FILE, PACKS_DIR];
+        for entry in fs::read_dir(&dir)? {
+            if !expected.iter().any(|n| entry.as_ref().is_ok_and(|e| e.file_name() == *n)) {
+                return Err(Error::NotDiscardable);
+            }
+        }
+        if fs::read_dir(&packs)?.next().is_some() {
+            return Err(Error::NotDiscardable);
+        }
+        for name in [HEADER_FILE, STATUS_FILE, LOG_FILE] {
+            match fs::remove_file(dir.join(name)) {
+                Err(e) if e.kind() != ErrorKind::NotFound => return Err(e.into()),
+                _ => {}
+            }
+        }
+        fs::remove_dir(&packs)?;
+        fs::remove_dir(&dir)?;
+        Ok(())
+    }
+
     /// Mark the package complete.
     pub fn finish(mut self) -> Result<Status> {
         self.pending.push(Record::End { finished_unix: now_unix() });
