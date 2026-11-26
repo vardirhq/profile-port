@@ -2,6 +2,8 @@
 
 **Status:** Accepted
 
+**Implementation status:** This is an accepted design decision, not a description of the current executable. The application does not currently embed a `requireAdministrator` manifest or enable `SeBackupPrivilege` / `SeRestorePrivilege`. Existing access depends on the launching account and normal OS permissions. Ownership handling and signing described below are not established by this decision. See [security and data handling](../development/security.md).
+
 ## Context
 
 The proposal asks for "minimal privileges" and elevation only when needed. In

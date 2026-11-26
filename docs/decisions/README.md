@@ -4,7 +4,9 @@ Short records of the decisions that shape ProfilePort. Each one states the
 problem, the options considered, the choice, and what it costs us.
 
 Status values: **Proposed** (recommended, awaiting sign-off), **Accepted**,
-**Superseded**.
+**Superseded**. Acceptance records a design choice, not proof that every
+feature in the decision is implemented. Check each implementation-status note
+and the [current architecture](../development/architecture.md).
 
 | # | Decision | Status |
 |---|----------|--------|

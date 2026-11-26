@@ -1,8 +1,13 @@
 # Platform gotchas
 
-Platform behaviours the engine must handle explicitly. Each one turns into a
-test fixture (see the proposal's testing strategy) and, where relevant, a
-distinct line in the transfer report.
+This is a working list of platform requirements, risks, and future design
+ideas. Many bullets describe intended behavior, not implemented behavior or
+verified coverage. Consult [current coverage](guides/coverage.md) and the
+[build and test guide](development/building-and-testing.md) before relying on
+any item. In particular, offline hive loading, VSS, `SeBackupPrivilege`,
+volume-identity tracking, sleep prevention, hard-link preservation, and a
+cloud-hydration option are not implemented. Cloud and hardware cases require
+additional testing.
 
 ## Profile structure
 

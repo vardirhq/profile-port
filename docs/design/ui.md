@@ -1,104 +1,57 @@
-# UI design
+# Desktop UI
 
-The desktop UI is built in [Slint](https://slint.dev) (see
-[ADR 0001](../decisions/0001-gui-framework.md)). This document describes the
-visual system and how to work on it.
+The current desktop app is an early Slint interface connected to the transfer
+engine. It has not been visually or interactively reviewed on Windows clients.
+The checked-in dashboard screenshots show an earlier sample-data prototype,
+not the current screens. For operator instructions see the
+[desktop guide](../guides/desktop.md); for the component and test boundaries see
+[architecture](../development/architecture.md).
 
-| Light | Dark |
-|---|---|
-| ![Dashboard, light](../screenshots/dashboard-light.png) | ![Dashboard, dark](../screenshots/dashboard-dark.png) |
+## Current screens and behavior
 
-## Principles
+- **Back up:** choose a discovered profile or type its path, enter an existing
+  drive root and ticket, prepare a package, then record and type back the code.
+  Canceling at confirmation leaves an empty interrupted package. The screen
+  reports progress and export details.
+- **Verify or restore:** enter a drive root and find packages, or enter a
+  package folder directly; enter the code; optionally resume an incomplete
+  backup, verify stored content, or restore to an existing destination. Cloud
+  acknowledgment is required for detected cloud-like target paths.
+- The status area lists relevant results and problems, but is not an
+  exportable report. Progress shows files, bytes and a current path, not a
+  total percentage, speed, or ETA. The app has no active-operation cancel.
 
-1. **One obvious next step.** Each screen has a clear primary action. The
-   dashboard's three cards are the three jobs a technician comes to do.
-2. **State is never hidden.** Interrupted, partial and verified backups look
-   different at a glance (status badges), and problems surface as notices at
-   the top of the page — never only in a log.
-3. **Calm by default.** Neutral surfaces, one accent colour, colour reserved
-   for meaning (green = verified, amber = needs attention, red = failure).
-4. **Honest wording.** "Partial — 3 files skipped", not "Done". "Verified"
-   only when content was hashed and compared.
-5. **Nothing customer-identifying without the code.** The drive is shared
-   across customers ([ADR 0002](../decisions/0002-package-format.md)), so
-   lists show only plaintext package metadata — ticket number, date, size,
-   status, age. Profile and computer names appear only for packages
-   unlocked with their transfer code in the current session.
-6. **Dense enough for professionals.** Generous whitespace, but a technician
-   should see drive state and recent backups without scrolling.
+Current limitations include manual drive/folder entry, no visual folder
+picker, no category selection, no size estimate or conflict preview, no
+program inventory, no user sign-out detection, and no USB-management flow.
+The profile list is from the running system and is not an offline-Windows
+installation browser. Verification of stored files does not prove that all
+source data was captured.
 
-## Tokens
+## Design intent
 
-All colours, sizes and motion live in `apps/desktop/ui/theme.slint`
-(`global Theme`). Components never use literal colours. Switching
-`Theme.dark` re-themes the whole app.
+The intended direction is a calm professional tool with an obvious primary
+action, clear status, and honest language about incomplete or unverified data.
+Avoid showing profile/computer names from a package before it is unlocked.
+Do not claim the current screens have already achieved the former prototype's
+layout or polish.
 
-| Group | Tokens |
-|---|---|
-| Neutrals | `window-bg`, `sidebar-bg`, `surface`, `surface-hover`, `surface-sunken`, `border`, `border-strong` |
-| Text | `text-primary`, `text-secondary`, `text-tertiary` |
-| Accent | `accent`, `accent-hover`, `accent-subtle`, `on-accent` |
-| Status | `success`/`-subtle`, `warning`/`-subtle`/`-border`, `danger` |
-| Type | `text-display` 28, `text-title` 17, `text-body` 14, `text-small` 13, `text-caption` 12 |
-| Spacing | 4 px grid: `space-1` … `space-10` |
-| Radius | `radius-small` 6, `radius-medium` 10, `radius-large` 14 |
-| Motion | `motion-fast` 120 ms (hover), `motion-medium` 200 ms (movement) |
+`ui/theme.slint` contains theme tokens and the app uses the `Label` component
+from `ui/components.slint` together with Slint standard widgets. The component
+file retains reusable components from the earlier prototype; their presence is
+not evidence that the current screens use them. `PROFILEPORT_THEME=dark`
+selects dark mode; system theme detection is not implemented.
 
-Dark mode uses its own lighter accent (`#7b93ff`) with dark text on accent
-fills, rather than inverting the light palette, and drops shadows in favour of
-borders.
+## Visual verification
 
-## Typography
+`scripts/screenshot.sh [scale]` captures both themes on Linux with Xvfb,
+ImageMagick and xdotool, overwriting the existing dashboard screenshot paths.
+Current content comes from the executing machine's discovered profiles; it is
+not sample data. Use synthetic profiles and inspect screenshots before sharing.
+The helper only captures the initial view; it does not exercise each workflow.
 
-**Inter**, bundled in `ui/fonts/` (SIL OFL 1.1). Windows 11's Segoe UI
-Variable isn't available on Windows 10, and plain Segoe UI renders noticeably
-differently at the same sizes. Bundling Inter makes every machine look the
-same and adds about 1 MB.
-
-## Icons
-
-[Lucide](https://lucide.dev) v0.460.0 (ISC licence), stored as SVGs in
-`ui/icons/` with stroke width 1.75 and tinted at runtime via `colorize`. Add
-new icons the same way. Do not mix icon families.
-
-## Components (`ui/components.slint`)
-
-`Icon`, `Label`, `Card`, `PrimaryButton`, `SecondaryButton`, `Badge`,
-`NavItem`, `ActionCard`. Screen-level parts (`Sidebar`, `Notice`,
-`DriveCard`, `BackupsCard`, `BackupRow`) are in `ui/app.slint` until a second
-screen needs them.
-
-Slint layout notes learned while building the prototype:
-
-- Children of a layout can't set `x`/`y`. To centre a small fixed-size item
-  in a row, place it inside a plain `Rectangle` (children of plain elements
-  are centred by default). `Icon` does this internally.
-- A fixed-width child in a `VerticalLayout` caps the layout's maximum width.
-  In cards, put fixed-size tiles in a `HorizontalLayout` with a stretching
-  spacer, or the card (and ultimately the window) stops growing.
-- Equal-width columns: give each item the same `preferred-width` and
-  `horizontal-stretch: 1`. Binding widths to the parent layout's width
-  creates a binding loop.
-
-## Screenshots
-
-`scripts/screenshot.sh [scale]` builds the app and renders both themes under
-Xvfb into `docs/screenshots/` (Linux; needs `xvfb`, `imagemagick`,
-`xdotool`). Default scale is 2 for crisp images; use `1` for quick checks.
-Sample data comes from `apps/desktop/src/main.rs`.
-
-These are rendered with Slint's FemtoVG renderer on Linux. **Check on real
-Windows hardware at 100 %, 125 % and 150 % scaling** before treating a design
-as final. Font rasterisation and DPI behaviour differ there.
-
-## Next screens
-
-1. Profile discovery (pick a Windows installation and user; warn if that
-   user is signed in — see ADR 0005).
-2. Data selection with size estimates and exclusions.
-3. Transfer progress (overall + current file, speed, ETA, warnings).
-4. Export complete: transfer code display, "write it on the device tag",
-   and type-back confirmation (ADR 0002).
-5. Verification summary (verified / partial / failed, with drill-down).
-6. Unlock a package (enter transfer code) and restore mapping (source folders → destination user, conflict preview).
-7. USB drive management and "Prepare for next customer".
+Review both screens and their error, progress and completion states at the
+minimum supported window size and common Windows display scales. Record the
+Windows version, renderer and scaling used. A Linux screenshot or successful
+Slint build is not evidence that Windows interaction and layout work. See the
+[VM test plan](../guides/windows-vm-testing.md).

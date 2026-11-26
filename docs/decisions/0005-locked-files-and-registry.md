@@ -2,6 +2,8 @@
 
 **Status:** Accepted — VSS deferred to Phase 2
 
+**Implementation status:** This decision records a planned workflow. The current app does not detect signed-in users or running applications, sign users out, use VSS, or guarantee archival of registry hives. Live reads can skip locked or inaccessible files; review the report. Registry migration adapters and hive loading are not implemented. See [coverage](../guides/coverage.md).
+
 ## Context
 
 On a running PC several important files are locked or changing:

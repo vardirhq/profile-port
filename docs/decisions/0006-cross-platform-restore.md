@@ -4,6 +4,9 @@
 is the primary platform; Linux and macOS are supported targets and sources
 for the CLI, tested in CI.
 
+
+**Implementation status:** Cross-platform mapping and CLI smoke tests exist, but physical Windows client and Mac hardware have not been validated. Offline user hives are not loaded, cloud detection is heuristic, and not every synced destination is detected. The desktop UI has no folder-mapping preview. See [coverage](../guides/coverage.md) and [testing](../development/building-and-testing.md).
+
 ## Context
 
 The question: can a backup made on Windows be restored on Linux, and vice

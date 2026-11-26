@@ -2,6 +2,9 @@
 
 **Status:** Accepted (largely follows from [0002](0002-package-format.md))
 
+
+**Implementation status:** The native Rust engine exists, but several bullets below describe intended behavior rather than implemented features. Backup privileges, VSS, cache-bypassing verification and explicit re-ownership to the destination user are not implemented. Restore read-back uses normal filesystem I/O. See [architecture](../development/architecture.md) and [coverage](../guides/coverage.md).
+
 ## Context
 
 The proposal planned to start with Robocopy, but also requires a per-file
