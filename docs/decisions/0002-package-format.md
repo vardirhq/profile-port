@@ -2,6 +2,9 @@
 
 **Status:** Accepted
 
+
+**Implementation status:** The package format is implemented, but this record also contains design alternatives and future operational features. Use the [format specification](../package-format.md) and [security guide](../development/security.md) for the current format and threat boundaries. Plaintext status exposes aggregate file and byte counts; per-chunk authentication is provided by AEAD, while the manifest stores a BLAKE3 hash per file (not a separate BLAKE3 hash per chunk). Full metadata preservation, recovery-job flags, protected reset, and secure erasure are not implemented guarantees.
+
 ## Context
 
 The original proposal adds encryption and "protected storage reset" in

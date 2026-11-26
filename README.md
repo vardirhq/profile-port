@@ -13,11 +13,24 @@ anything that couldn't be copied.
 >   Windows, Linux and macOS in any direction (CLI, tested in CI on all
 >   three). Not yet: `SeBackupPrivilege` for other users'
 >   files, VSS, loading offline registry hives, cache-bypassing verification.
-> - **Desktop UI:** dashboard prototype with sample data, not yet wired to
->   the engine.
+> - **Desktop UI:** early interface connected to the engine for backup,
+>   resume, verification, and restore. It has not yet been interactively or
+>   visually validated on Windows clients. Drive and folder paths are entered
+>   manually; per-folder selection and durable reports are not implemented.
 
-The screenshots in `docs/screenshots/` show the earlier dashboard prototype;
-the current transfer screens have not yet been captured or visually reviewed.
+**Use disposable test data:** the current transfer screens have not yet been
+visually or interactively reviewed, and physical Windows/USB testing remains
+outstanding. The checked-in screenshots show the earlier dashboard prototype.
+Keep an independent backup and the original data until recovery is confirmed.
+
+## Documentation
+
+- [Desktop transfer guide](docs/guides/desktop.md) and [CLI guide](docs/guides/cli.md) — backup, resume, verify, and restore.
+- [What a transfer includes](docs/guides/coverage.md) — exclusions, links, metadata, and limits.
+- [Troubleshooting and recovery](docs/guides/troubleshooting.md) — failure cases and CLI cautions.
+- [Windows VM test plan](docs/guides/windows-vm-testing.md) — repeatable tests with disposable data.
+- [Architecture and transfer lifecycle](docs/development/architecture.md) and [security and data handling](docs/development/security.md).
+- [Build and test guide](docs/development/building-and-testing.md), [package format](docs/package-format.md), and [architecture decisions](docs/decisions/README.md).
 
 ## Stack
 
@@ -34,7 +47,7 @@ apps/cli/              `profileport-cli` command-line tool
 apps/desktop/          Slint desktop transfer app
   ui/theme.slint       design tokens (colours, type, spacing, motion)
   ui/components.slint  reusable components
-  ui/app.slint         main window / dashboard
+  ui/app.slint         current transfer screens
   ui/icons/            Lucide icons (ISC)
   ui/fonts/            Inter (SIL OFL 1.1)
 docs/decisions/        architecture decision records
