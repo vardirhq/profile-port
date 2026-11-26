@@ -3792,8 +3792,10 @@ dependencies = [
 name = "profileport-desktop"
 version = "0.1.0"
 dependencies = [
+ "profileport-engine",
  "slint",
  "slint-build",
+ "tempfile",
 ]
 
 [[package]]

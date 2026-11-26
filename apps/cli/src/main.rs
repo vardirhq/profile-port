@@ -392,6 +392,7 @@ fn run_restore(
     print_list("Name conflicts", &conflicts);
     print_failures("FAILED", &r.failed);
     print_skips("Not in the backup", &r.skipped_at_backup);
+    print_list("Changed while being backed up (check these)", &r.changed_at_backup);
     print_list("Incomplete in the backup", &r.incomplete_at_backup);
     let links: Vec<String> = r.links_not_restored.iter().map(|(p, t)| format!("{p} → {t}")).collect();
     print_list("Links not restored (Windows recreates the standard ones)", &links);
