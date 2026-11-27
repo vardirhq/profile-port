@@ -2,31 +2,44 @@
 
 The current desktop app is an early Slint interface connected to the transfer
 engine. It has not been visually or interactively reviewed on Windows clients.
-The checked-in dashboard screenshots show an earlier sample-data prototype,
-not the current screens. For operator instructions see the
+The checked-in dashboard screenshots show the earlier sample-data prototype
+the current screens are modelled on, not the screens themselves. For operator instructions see the
 [desktop guide](../guides/desktop.md); for the component and test boundaries see
 [architecture](../development/architecture.md).
 
 ## Current screens and behavior
 
-- **Back up:** choose a discovered profile or type its path, enter an existing
-  drive root and ticket, prepare a package, then record and type back the code.
-  Canceling at confirmation removes the still-empty package. The screen
-  reports progress and export details.
-- **Verify or restore:** enter a drive root and find packages, or enter a
-  package folder directly; enter the code; optionally resume an incomplete
-  backup, verify stored content, or restore to an existing destination. Cloud
-  acknowledgment is required for detected cloud-like target paths.
-- The status area lists relevant results and problems, but is not an
-  exportable report. Progress shows files, bytes and a current path, not a
-  total percentage, speed, or ETA. The app has no active-operation cancel.
+The rule ([ADR 0007](../decisions/0007-code-in-ticket-and-no-typing.md)): the
+only things typed are the ticket number at backup and the transfer code at
+restore. Everything else is picked from a list or confirmed with a button.
 
-Current limitations include manual drive/folder entry, no visual folder
-picker, no category selection, no size estimate or conflict preview, no
-program inventory, no user sign-out detection, and no USB-management flow.
-The profile list is from the running system and is not an offline-Windows
-installation browser. Verification of stored files does not prove that all
-source data was captured.
+- **Layout:** sidebar navigation (Home, Back up, Restore, USB drive) and a
+  page header naming the computer and the selected drive. It follows the
+  earlier dashboard prototype's visual language: cards, numbered steps,
+  selectable cards for profiles and drives, backup rows with status badges,
+  Lucide icons.
+- **Home:** an interrupted-backup banner, three action cards, the drive card
+  (free space, space bar, old-backup count, **Prepare for next customer**)
+  and the first four backups on the drive.
+- **Back up:** whose files, which drive, ticket number, then **Create
+  backup**. A dedicated code screen ("Store this transfer code in the
+  ticket") enables **Start backup** only once "I've stored the code in the
+  ticket and checked it" is ticked. An invalid ticket turns its hint red and
+  disables the button. The result offers **Check backup now**.
+- **Restore:** backup rows, the code (live format check), destination
+  profile cards, a cloud warning when relevant, then **Restore files**,
+  **Check backup**, **Continue backup** (interrupted only) and **Wipe from
+  drive…**. A fully successful restore offers the wipe.
+- **USB drive:** drive cards, every backup, per-backup wipe and **Prepare for
+  next customer**. Wipes are confirmed inline, never by typing.
+- Drives are re-read every two seconds while nothing is running or being
+  confirmed. **Other folder…** opens the system folder dialog (`rfd`).
+- The result card shows a spinner while working, then a title and details.
+  After a fully successful restore it offers the wipe. Progress shows files,
+  size and the current path, not a percentage, speed or ETA. There is no
+  cancel for a running job, no category selection, size estimate, conflict
+  preview, program inventory or sign-out detection. Verification of stored
+  files does not prove that all source data was captured.
 
 ## Design intent
 

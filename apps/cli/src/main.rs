@@ -22,6 +22,8 @@ struct Cli {
 enum Cmd {
     /// List the user profiles on this computer and their standard folders
     Profiles,
+    /// List the drives a backup can go to (USB sticks and other non-system drives)
+    Drives,
     /// List the backups on a ProfilePort drive (no code needed)
     List {
         /// Root of the USB drive, e.g. E:\
@@ -106,6 +108,7 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.cmd {
         Cmd::Profiles => profiles(),
+        Cmd::Drives => drives(),
         Cmd::List { drive } => list(&drive),
         Cmd::Export { source, drive, ticket, computer, profile, no_confirm } => {
             run_export(&source, &drive, &ticket, computer, profile, no_confirm)
@@ -150,6 +153,32 @@ fn profiles() -> Res {
             let cloud = if is_cloud_synced(&path) { "  [cloud-synced]" } else { "" };
             println!("    {:<10} {}{}", format!("{kf:?}"), path.display(), cloud);
         }
+    }
+    Ok(Outcome::Clean)
+}
+
+// ---------------------------------------------------------------- drives
+
+fn drives() -> Res {
+    let list = system::list_drives();
+    if list.is_empty() {
+        println!("No drives found apart from the system drive. Plug in the USB drive and try again.");
+        return Ok(Outcome::Clean);
+    }
+    for d in list {
+        let space = match (d.free_bytes, d.total_bytes) {
+            (Some(f), Some(t)) => format!("{} free of {}", human_bytes(f), human_bytes(t)),
+            _ => "size unknown".into(),
+        };
+        let backups = package::list_packages(&transfers_dir(&d.path)).map(|l| l.len()).unwrap_or(0);
+        println!(
+            "{:<24} {:<16} {:<10} {:<26} {} backup(s)",
+            d.path.display(),
+            d.label,
+            if d.removable { "USB" } else { "fixed disk" },
+            space,
+            backups
+        );
     }
     Ok(Outcome::Clean)
 }
@@ -251,8 +280,8 @@ fn show_code(ticket: &str, code: &TransferCode) {
     println!("  │                                                              │");
     println!("  │                     {code}                           │");
     println!("  │                                                              │");
-    println!("  │  Write this on the DEVICE TAG.                               │");
-    println!("  │  Don't enter it in the ticket system.                        │");
+    println!("  │  Store it in the ticket's SENSITIVE-DATA field,              │");
+    println!("  │  not in ordinary notes. It is not stored on the drive.       │");
     println!("  │  Without it this backup can't be restored or resumed.        │");
     println!("  └──────────────────────────────────────────────────────────────┘");
 }
@@ -577,7 +606,7 @@ fn print_wiped(w: &package::WipeReport) {
         String::new()
     };
     println!("✔ Wiped {what}: key destroyed, {} file(s) deleted{overwritten}.", w.files_removed);
-    println!("  Discard the device tag with the code when the job is closed.");
+    println!("  The code in the ticket's sensitive-data field is cleared when the ticket is set to finished.");
 }
 
 // ---------------------------------------------------------------- helpers
@@ -587,7 +616,7 @@ fn get_code(code: Option<String>, ticket: &str) -> Result<TransferCode, Box<dyn 
         return Ok(TransferCode::parse(&c)?);
     }
     loop {
-        let Some(line) = prompt(&format!("Transfer code for ticket {ticket} (from the device tag): "))? else {
+        let Some(line) = prompt(&format!("Transfer code for ticket {ticket} (from the ticket): "))? else {
             return Err("a transfer code is required".into());
         };
         match TransferCode::parse(&line) {

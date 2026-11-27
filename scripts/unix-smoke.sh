@@ -108,6 +108,11 @@ dout="$(echo WIPE | "$EXE" wipe --drive "$drive" --all 2>&1)"
 check "wipe --all clears the drive" test -z "$(ls -A "$drive/ProfilePort/transfers")"
 check "list shows no backups after wipe --all" contains "$("$EXE" list --drive "$drive" 2>&1)" 'No backups'
 
+echo "== Drives"
+dout="$(PROFILEPORT_DRIVES="$drive" "$EXE" drives 2>&1)"
+echo "$dout"
+check "drives lists a folder given in PROFILEPORT_DRIVES" contains "$dout" "$(basename "$drive")"
+
 echo "== Profiles"
 "$EXE" profiles
 check "profiles command runs" "$EXE" profiles

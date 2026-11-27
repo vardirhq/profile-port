@@ -21,19 +21,37 @@ GUI has not yet been visually or interactively verified on Windows clients.
 `PROFILEPORT_THEME=dark` opts into dark mode; other values use the default light
 mode. Automatic system-theme detection is not implemented.
 
+Running the desktop app on Linux needs X11 or Wayland with the
+`libxkbcommon-x11` library (package `libxkbcommon-x11-0` on Debian/Ubuntu). The
+**Other folder…** dialog uses the XDG desktop portal there. To make a folder
+show up in the drive list (for a test machine or a headless run), set
+`PROFILEPORT_DRIVES` to it, separated like `PATH`.
+
+The Windows-only code can be linted from Linux or macOS without a Windows
+machine (check only, nothing is linked):
+
+```sh
+rustup target add x86_64-pc-windows-msvc
+cargo clippy -p profileport-package -p profileport-engine -p profileport-cli -p profileport-desktop \
+  --features blake3/pure --target x86_64-pc-windows-msvc --all-targets -- -D warnings
+```
+
+`blake3/pure` skips blake3's assembly, which would need Microsoft's assembler.
+
 ## Automated coverage
 
 Run `cargo test --workspace` where desktop dependencies are available. The
 engine and package suites cover encryption, corruption, crash/resume, path
 validation, mapping and conflict behavior. Desktop unit tests exercise the
 transfer bridge with temporary directories, including a backup/verify/restore
-round trip and selected safety checks. They do not drive the Slint UI.
+round trip, listing and wiping backups, drive and profile labels, ticket and
+code feedback, and selected safety checks. They do not drive the Slint UI.
 
 CI (`.github/workflows/ci.yml`) currently does the following:
 
 | Runner | Checks |
 |---|---|
-| Linux | Clippy and tests excluding desktop, release CLI build, Unix CLI smoke test |
+| Linux | Clippy and tests excluding desktop, Clippy of all crates for the Windows target (check only), release CLI build, Unix CLI smoke test |
 | macOS | Tests excluding desktop, release CLI build, Unix CLI smoke test |
 | Windows | Tests excluding desktop, desktop transfer tests, release CLI and desktop builds, Windows CLI smoke test |
 

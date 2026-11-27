@@ -19,9 +19,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+          targets: x86_64-pc-windows-msvc
       - uses: Swatinem/rust-cache@v2
       # The desktop app needs X11/font libraries; the engine is what matters here.
       - run: cargo clippy --workspace --exclude profileport-desktop --all-targets -- -D warnings
+      # Lint the Windows-only code (win.rs, system/windows.rs, the desktop app)
+      # without a Windows machine. Check only: nothing is linked. blake3's
+      # `pure` feature avoids its assembly, which needs Microsoft's assembler.
+      - name: Clippy for Windows
+        run: >-
+          cargo clippy -p profileport-package -p profileport-engine -p profileport-cli -p profileport-desktop
+          --features blake3/pure --target x86_64-pc-windows-msvc --all-targets -- -D warnings
       - run: cargo test --workspace --exclude profileport-desktop
       - run: cargo build --release -p profileport-cli
       - name: Linux smoke test

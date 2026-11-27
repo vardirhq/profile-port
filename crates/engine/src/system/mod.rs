@@ -1,5 +1,6 @@
-//! What the running system knows about user profiles: which profiles exist
-//! and where each keeps its standard folders.
+//! What the running system knows about user profiles (which profiles exist
+//! and where each keeps its standard folders) and about the drives a backup
+//! could be written to.
 
 use std::path::{Path, PathBuf};
 
@@ -16,7 +17,7 @@ use unix as imp;
 use windows as imp;
 
 #[cfg(unix)]
-pub use unix::parse_user_dirs;
+pub use unix::{parse_mounts, parse_user_dirs};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProfileInfo {
@@ -48,6 +49,39 @@ pub fn known_folders(profile: &Path) -> Vec<(KnownFolder, PathBuf)> {
     }
     out.retain(|(_, p)| p.is_dir());
     out.sort();
+    out
+}
+
+/// A drive (volume) that a backup could be written to or read from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DriveInfo {
+    /// Its root: `E:\`, `/media/anna/KINGSTON`, `/Volumes/KINGSTON`.
+    pub path: PathBuf,
+    /// The volume label, or the mount folder's name; may be empty.
+    pub label: String,
+    /// The system reports it as removable media (USB stick, card). External
+    /// USB hard drives usually report as fixed.
+    pub removable: bool,
+    pub free_bytes: Option<u64>,
+    pub total_bytes: Option<u64>,
+}
+
+/// Drives other than the system drive: USB sticks, external and secondary
+/// disks. Removable drives come first. Folders listed in the
+/// `PROFILEPORT_DRIVES` environment variable (separated like `PATH`) are
+/// added, for test machines whose transfer disk is not detected as a drive.
+pub fn list_drives() -> Vec<DriveInfo> {
+    let mut out = imp::list_drives();
+    if let Some(extra) = std::env::var_os("PROFILEPORT_DRIVES") {
+        for path in std::env::split_paths(&extra).filter(|p| p.is_dir()) {
+            if !out.iter().any(|d| d.path == path) {
+                let (free_bytes, total_bytes) = imp::space(&path);
+                let label = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                out.push(DriveInfo { path, label, removable: false, free_bytes, total_bytes });
+            }
+        }
+    }
+    out.sort_by_key(|d| !d.removable);
     out
 }
 

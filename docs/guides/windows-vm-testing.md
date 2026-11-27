@@ -44,13 +44,15 @@ report. Capture non-sensitive evidence deliberately, checking it before sharing.
 
 ## Core scenarios
 
-1. **Profile discovery and export.** Start the desktop app. Choose the source
-   profile or enter the fixture path. Enter the transfer drive root and a
-   non-sensitive ticket such as `VM-001`. Prepare the backup, write down the
-   code securely, type it back and run it. Confirm the displayed package path
-   is on the test drive. Record every skipped, excluded or changed item.
-2. **Verification.** On **Verify or restore**, find the backup on the drive,
-   enter the code and choose **Verify backup**. Record the number verified and
+1. **Profile discovery and export.** Start the desktop app. Check that the
+   profiles are listed (signed-in user first) and that the transfer disk
+   appears under **Back up to** within a few seconds of attaching it; try
+   **Other folder…** for the fixture path. Enter a non-sensitive ticket such
+   as `VM-001` (and once a name with a space, which must be refused). Create
+   the backup, store the code as your procedure says, tick the checkbox and
+   start it. Record every skipped, excluded or changed item.
+2. **Verification.** On **Restore**, pick the drive and backup, enter
+   the stored code and choose **Check backup**. Record the number verified and
    any failure. A clean verification does not prove the source was complete;
    compare the export report with the fixture inventory.
 3. **Restore on a second VM or account.** Safely detach the virtual drive and
@@ -84,14 +86,16 @@ report. Capture non-sensitive evidence deliberately, checking it before sharing.
    does not establish that a folder is local. Do not use a real customer cloud
    account.
 
-9. **Wipe.** After a restore, select the backup and choose **Wipe backup…**.
-   Type a wrong ticket number: nothing should change. Type the right one and
-   wipe: the package folder should be gone, other packages and the restored
-   files untouched. Repeat with the overwrite option on a larger backup and
+9. **Wipe.** After a restore, use the offered **Wipe backup from drive…** (or
+   select the backup and choose **Wipe from drive…**). Choose **Cancel**:
+   nothing should change. Wipe: the backup should vanish from the list and
+   the drive, other backups and the restored files untouched. Repeat with the overwrite option on a larger backup and
    record how long it takes. Then detach the transfer disk in the middle of
-   an overwrite wipe, reattach it, and check that **Find backups** lists the
-   package as partly wiped, that the code no longer opens it, and that wiping
-   it again (typing `WIPE`) finishes. This doesn't show what a physical flash
+   an overwrite wipe, reattach it, and check that the list shows the backup
+   as partly wiped, that the code no longer opens it, and that **Finish
+   wiping** completes it. Finally make two more backups and use **Prepare for
+   next customer** on **USB drive**: both must go, and a file you put in
+   `ProfilePort\transfers` yourself must stay. This doesn't show what a physical flash
    drive keeps internally; that can't be checked from Windows.
 
 For each scenario, write PASS only for observed checks, FAIL for an unexpected
@@ -107,4 +111,5 @@ placeholders, BitLocker, and ARM64 Windows separately when hardware and safe
 test accounts are available. A virtual disk detach cannot fully reproduce a
 USB controller, cable, device write cache, power failure or real-world drive
 performance. Verify the desktop layout at common Windows display scaling
-levels before treating it as finished.
+levels before treating it as finished, including the drive picker with a
+real USB stick plugged in and out, and the **Other folder…** dialog.

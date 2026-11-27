@@ -14,9 +14,11 @@ anything that couldn't be copied.
 >   three). Not yet: `SeBackupPrivilege` for other users'
 >   files, VSS, loading offline registry hives, cache-bypassing verification.
 > - **Desktop UI:** early interface connected to the engine for backup,
->   resume, verification, restore and wiping a backup. It has not yet been interactively or
->   visually validated on Windows clients. Drive and folder paths are entered
->   manually; per-folder selection and durable reports are not implemented.
+>   resume, verification, restore and wiping a backup. Profiles, drives and
+>   backups are picked from lists; only the ticket number and, at restore,
+>   the transfer code are typed. It has not yet been interactively or
+>   visually validated on Windows clients. Per-folder selection and durable
+>   reports are not implemented.
 
 **Use disposable test data:** the current transfer screens have not yet been
 visually or interactively reviewed, and physical Windows/USB testing remains
@@ -63,9 +65,10 @@ scripts/windows-smoke.ps1  end-to-end test on real Windows (run in CI)
 ```text
 profileport-cli export C:\Users\anna --drive E:\ --ticket 48231
     Shows the transfer code, asks for it to be typed back, then copies.
-    Write the code on the device tag, not in the ticket system.
+    Keep the code in the ticket's sensitive-data field, never in ordinary notes.
 
 profileport-cli profiles                      user profiles on this PC and their standard folders
+profileport-cli drives                        USB sticks and other drives a backup can go to
 profileport-cli list --drive E:\              backups on the drive (no code needed)
 profileport-cli resume  <package-folder>         continue after an interruption
 profileport-cli verify  <package-folder>         decrypt and hash-check everything
@@ -93,8 +96,8 @@ first, because restoring there uploads the files. See
 When the job is done, `wipe` (or **Wipe backup…** in the desktop app)
 destroys the package's key and deletes it from the drive. On flash drives
 this can't guarantee that no old blocks survive inside the drive. Those are
-encrypted, and the code that opens them exists only on the device tag, so
-discard the tag too. See [security](docs/development/security.md#wiping-backups-from-the-drive).
+encrypted, and the code that opens them is kept only in the ticket's
+sensitive-data field, which is cleared when the ticket is set to finished. See [security](docs/development/security.md#wiping-backups-from-the-drive).
 
 Restore never overwrites or deletes anything. Existing files are left alone
 and reported (or, with `--keep-both`, restored as `name (restored).ext`).

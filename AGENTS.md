@@ -31,6 +31,8 @@ cargo clippy --workspace --exclude profileport-desktop --all-targets -- -D warni
 cargo test --workspace --exclude profileport-desktop                           # package, engine, CLI
 cargo test -p profileport-desktop                                              # transfer.rs bridge tests
 cargo clippy -p profileport-desktop --all-targets -- -D warnings               # not in CI; currently clean
+cargo clippy -p profileport-package -p profileport-engine -p profileport-cli -p profileport-desktop \
+  --features blake3/pure --target x86_64-pc-windows-msvc --all-targets -- -D warnings   # Windows code, from Linux
 cargo build --release -p profileport-cli
 scripts/unix-smoke.sh target/release/profileport-cli                           # Linux/macOS end to end
 ```
@@ -47,10 +49,13 @@ CI (`.github/workflows/ci.yml`):
 | macOS | Tests excluding desktop, release CLI build, `unix-smoke.sh` |
 | Windows | Tests excluding desktop, `cargo test -p profileport-desktop`, release CLI + desktop builds, `windows-smoke.ps1` |
 
-Clippy only runs on Linux. `#[cfg(windows)]` code (`win.rs`,
-`system/windows.rs`, the `windows-sys` calls) is never linted, and is only
-compiled on the Windows runner. If you change it without a Windows build, say
-so in the PR.
+Clippy runs on Linux, both natively and for the `x86_64-pc-windows-msvc`
+target (check only; needs `rustup target add x86_64-pc-windows-msvc`). So
+`#[cfg(windows)]` code (`win.rs`, `system/windows.rs`, the `windows-sys` calls)
+is type-checked and linted, but only *runs* on the Windows runner. If you
+change it without a Windows run, say so in the PR. windows-sys spreads
+constants across features: a missing import in a `match` arm silently becomes
+a catch-all binding, which only the Windows lint catches.
 
 The smoke scripts create and then delete test directories; read them before
 running them locally. `scripts/screenshot.sh` overwrites
@@ -88,7 +93,7 @@ On disk a package is `<drive>/ProfilePort/transfers/<ticket>-<hex>/` holding
 | `exclude.rs` | `Exclusions`, `DEFAULT_EXCLUSIONS`: case-insensitive patterns relative to the profile, where `*` matches one path component |
 | `platform.rs` | Metadata capture (`meta_of`), timestamps, IO-error → `SkipReason` classification, cloud-only detection, change fingerprint |
 | `win.rs` | Windows only: file attributes and alternate data streams |
-| `system/` | `list_profiles`, `known_folders`, `os_name`, `default_name`; `unix.rs` (`/etc/passwd`, XDG user-dirs, macOS `/Users`), `windows.rs` (ProfileList registry, Shell / User Shell Folders) |
+| `system/` | `list_profiles`, `known_folders`, `list_drives` (non-system drives, `PROFILEPORT_DRIVES` adds folders), `os_name`, `default_name`; `unix.rs` (`/etc/passwd`, XDG user-dirs, macOS `/Users`), `windows.rs` (ProfileList registry, Shell / User Shell Folders) |
 
 How export works: `prepare_export` validates the ticket, canonicalises the
 source, plans the known folders (folders outside the profile become `@Name`
@@ -221,6 +226,11 @@ it a label in the CLI's `print_skips`.
 **Wire a desktop action to the engine.** See below.
 
 ## Desktop (Slint)
+
+- UX rule (ADR 0007): the only typed inputs are the ticket number (backup) and
+  the transfer code (restore). Profiles, drives and backups come from lists
+  (`system::list_profiles`, `system::list_drives`, `list_packages`);
+  **Other folder…** uses `rfd`. Don't add path fields or typed confirmations.
 
 - `build.rs` compiles `ui/app.slint`, and `main.rs` pulls it in with
   `slint::include_modules!()`. `AppWindow` declares `in`/`in-out` properties

@@ -1,152 +1,765 @@
-import { Button, LineEdit, ComboBox, CheckBox, ScrollView } from "std-widgets.slint";
-// ProfilePort — main window (dashboard prototype).
+import { Button, LineEdit, CheckBox, ScrollView, Spinner } from "std-widgets.slint";
+// ProfilePort — main window. Four pages: Home, Back up, Restore, USB drive.
+// Everything is picked from lists except the ticket number (at backup) and
+// the transfer code (at restore); see ADR 0007.
 
 import { Theme } from "theme.slint";
-import { Label } from "components.slint";
+import { Label, Card, Icon, Badge, BadgeKind, NavItem, ActionCard } from "components.slint";
 
-export { Theme }
+export { Theme, BadgeKind }
+
+export struct ProfileItem {
+    title: string,
+    subtitle: string,
+    current: bool,
+}
+
+export struct DriveItem {
+    title: string,
+    subtitle: string,
+    removable: bool,
+    // Free space as a fraction; negative when unknown.
+    free-fraction: float,
+    free-text: string,
+    backups: int,
+}
+
+export struct BackupRow {
+    title: string,
+    subtitle: string,
+    badge-text: string,
+    badge: BadgeKind,
+    old: bool,
+    interrupted: bool,
+    partly-wiped: bool,
+}
+
+component Hint inherits Label {
+    color: Theme.text-secondary;
+    font-size: Theme.text-small;
+    wrap: word-wrap;
+}
+
+component Heading inherits Label {
+    font-size: Theme.text-title;
+    font-weight: Theme.weight-semibold;
+}
+
+// A panel with a numbered step title.
+component Step inherits Card {
+    in property <string> number;
+    in property <string> title;
+    VerticalLayout {
+        padding: Theme.space-5;
+        spacing: Theme.space-3;
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 12px;
+                background: Theme.accent-subtle;
+                Label { text: root.number; color: Theme.accent; font-size: Theme.text-caption; font-weight: Theme.weight-bold; horizontal-alignment: center; }
+            }
+            Heading { text: root.title; }
+        }
+        @children
+    }
+}
+
+// A highlighted panel for a question or a warning.
+component Callout inherits Rectangle {
+    in property <bool> warning: false;
+    background: warning ? Theme.warning-subtle : Theme.accent-subtle;
+    border-radius: Theme.radius-large;
+    border-width: 1px;
+    border-color: warning ? Theme.warning-border : Theme.border;
+    VerticalLayout {
+        padding: Theme.space-5;
+        spacing: Theme.space-3;
+        @children
+    }
+}
+
+// Free-space bar: the filled part is space in use.
+component SpaceBar inherits Rectangle {
+    in property <float> free-fraction;
+    height: 8px;
+    border-radius: 4px;
+    background: Theme.seg-free;
+    Rectangle {
+        x: 0;
+        width: parent.width * max(0.0, min(1.0, 1.0 - root.free-fraction));
+        height: parent.height;
+        border-radius: 4px;
+        background: Theme.seg-backups;
+    }
+}
+
+// A selectable card: a profile, a drive, or "Other folder…".
+component ChoiceCard inherits Rectangle {
+    in property <image> icon;
+    in property <string> title;
+    in property <string> badge;
+    in property <string> subtitle;
+    in property <bool> selected: false;
+    in property <bool> enabled: true;
+    in property <float> free-fraction: -1;
+    callback clicked;
+
+    min-height: 64px;
+    border-radius: Theme.radius-medium;
+    border-width: selected ? 2px : 1px;
+    border-color: selected ? Theme.accent : (ta.has-hover && enabled) ? Theme.border-strong : Theme.border;
+    background: selected ? Theme.accent-subtle : Theme.surface;
+    opacity: enabled ? 1.0 : 0.55;
+    animate border-color, background { duration: Theme.motion-fast; }
+
+    HorizontalLayout {
+        padding: Theme.space-3;
+        padding-right: Theme.space-4;
+        spacing: Theme.space-3;
+        Rectangle {
+            width: 40px;
+            height: 40px;
+            y: (parent.height - self.height) / 2;
+            border-radius: Theme.radius-medium;
+            background: root.selected ? Theme.surface : Theme.surface-sunken;
+            Icon { source: root.icon; size: 20px; tint: root.selected ? Theme.accent : Theme.text-secondary; }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+            horizontal-stretch: 1;
+            HorizontalLayout {
+                spacing: Theme.space-2;
+                Label { text: root.title; font-weight: Theme.weight-semibold; overflow: elide; }
+                if root.badge != "": Badge { text: root.badge; kind: BadgeKind.accent; }
+                Rectangle { horizontal-stretch: 1; }
+            }
+            Label { text: root.subtitle; color: Theme.text-secondary; font-size: Theme.text-small; overflow: elide; }
+            if root.free-fraction >= 0: SpaceBar { free-fraction: root.free-fraction; }
+        }
+        Rectangle {
+            width: 22px;
+            if root.selected: Icon { source: @image-url("icons/circle-check.svg"); tint: Theme.accent; size: 20px; }
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { if (root.enabled) { root.clicked(); } }
+    }
+}
+
+// A backup in a list.
+component BackupRowView inherits Rectangle {
+    in property <BackupRow> item;
+    in property <bool> selected: false;
+    in property <bool> enabled: true;
+    callback clicked;
+
+    min-height: 60px;
+    border-radius: Theme.radius-medium;
+    background: selected ? Theme.accent-subtle : (ta.has-hover && enabled) ? Theme.surface-hover : transparent;
+    border-width: selected ? 2px : 0px;
+    border-color: Theme.accent;
+    animate background { duration: Theme.motion-fast; }
+
+    HorizontalLayout {
+        padding: Theme.space-3;
+        spacing: Theme.space-3;
+        Rectangle {
+            width: 38px;
+            height: 38px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 19px;
+            background: root.selected ? Theme.surface : Theme.surface-sunken;
+            Icon { source: @image-url("icons/lock.svg"); size: 17px; tint: root.selected ? Theme.accent : Theme.text-tertiary; }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            horizontal-stretch: 1;
+            Label { text: root.item.title; font-weight: Theme.weight-semibold; overflow: elide; }
+            HorizontalLayout {
+                spacing: Theme.space-1;
+                if root.item.old: Icon { source: @image-url("icons/clock-3.svg"); size: 13px; tint: Theme.warning; }
+                Label { text: root.item.subtitle; color: root.item.old ? Theme.warning : Theme.text-secondary; font-size: Theme.text-small; overflow: elide; horizontal-stretch: 1; }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Badge { text: root.item.badge-text; kind: root.item.badge; }
+        }
+        Icon { source: @image-url("icons/chevron-right.svg"); size: 16px; tint: Theme.text-tertiary; }
+    }
+    ta := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { if (root.enabled) { root.clicked(); } }
+    }
+}
+
+// What a running job is doing, or how it ended.
+component ResultCard inherits Card {
+    in property <bool> busy;
+    in property <string> title;
+    in property <string> details;
+    in property <bool> ok: true;
+    VerticalLayout {
+        padding: Theme.space-5;
+        spacing: Theme.space-3;
+        HorizontalLayout {
+            spacing: Theme.space-3;
+            if root.busy: Spinner { indeterminate: true; width: 24px; height: 24px; }
+            if !root.busy: Icon {
+                source: root.ok ? @image-url("icons/circle-check.svg") : @image-url("icons/triangle-alert.svg");
+                tint: root.ok ? Theme.success : Theme.warning;
+                size: 24px;
+            }
+            Heading { text: root.title; wrap: word-wrap; horizontal-stretch: 1; }
+        }
+        if root.details != "": Label { text: root.details; color: Theme.text-secondary; font-size: Theme.text-small; wrap: word-wrap; }
+        @children
+    }
+}
 
 export component AppWindow inherits Window {
     title: "ProfilePort";
-    preferred-width: 1040px;
-    preferred-height: 760px;
-    min-width: 820px;
-    min-height: 620px;
+    preferred-width: 1180px;
+    preferred-height: 820px;
+    min-width: 900px;
+    min-height: 640px;
     background: Theme.window-bg;
     default-font-family: Theme.font-family;
 
     in property <string> version;
-    in property <[string]> profiles;
-    in property <[string]> packages;
-    in-out property <int> selected-package: 0;
-    in-out property <int> target-profile: 0;
-    in-out property <int> selected-profile: 0;
+    in property <string> computer;
     in-out property <int> page: 0;
-    in-out property <string> source;
-    in-out property <string> drive;
+
+    in property <[ProfileItem]> profiles;
+    in-out property <int> source-index: 0;
+    in-out property <int> target-index: 0;
+    in property <[DriveItem]> drives;
+    in-out property <int> drive-index: 0;
+    in property <[BackupRow]> backups;
+    in-out property <int> backup-index: -1;
+    in property <string> backups-summary;
+    in property <int> old-backups: 0;
+
+    // Back up.
     in-out property <string> ticket;
-    in-out property <string> package-path;
-    in-out property <string> target-path;
-    in-out property <string> code-entry;
-    in-out property <bool> allow-cloud: false;
-    in-out property <bool> confirming-wipe: false;
-    in-out property <string> wipe-entry;
-    in-out property <bool> wipe-overwrite: false;
-    in property <string> wipe-prompt;
-    in property <bool> busy: false;
+    in property <string> ticket-hint;
     in property <bool> awaiting-confirmation: false;
     in property <string> displayed-code;
-    in property <string> status: "Choose a task to begin.";
+    in-out property <bool> code-stored: false;
+
+    // Restore.
+    in-out property <string> code-entry;
+    in property <bool> code-ok: false;
+    in property <string> code-hint;
+    in property <string> cloud-warning;
+    in-out property <bool> allow-cloud: false;
+
+    // Wipe: 0 no question, 1 the selected backup, 2 every backup on the drive.
+    in-out property <int> confirming-wipe: 0;
+    in property <string> wipe-question;
+    in-out property <bool> wipe-overwrite: false;
+
+    // The running or last job, shown on the page it was started from.
+    in property <bool> busy: false;
+    in-out property <int> result-page: -1;
+    in property <string> status;
     in property <string> details;
-    callback profile-selected(int);
-    callback target-selected(int);
-    callback package-selected(int);
-    callback scan-drive;
-    callback cancel-preparation;
+    in property <bool> status-ok: true;
+    in property <bool> offer-wipe: false;
+    in property <bool> offer-check: false;
+
+    callback drive-clicked(int);
+    callback backup-clicked(int);
+    callback target-clicked(int);
+    callback choose-source-folder;
+    callback choose-target-folder;
+    callback ticket-edited;
+    callback code-edited;
     callback prepare-backup;
     callback confirm-backup;
+    callback cancel-preparation;
     callback resume-backup;
     callback verify-backup;
     callback restore-backup;
     callback begin-wipe;
-    callback wipe-backup;
+    callback begin-wipe-all;
+    callback wipe-confirmed;
+    callback check-new-backup;
+    // Re-read drives and backups; select the backup in that folder if given.
+    callback refresh(string);
+
+    property <bool> locked: root.busy || root.awaiting-confirmation;
+    property <bool> has-drive: root.drives.length > 0;
+    property <bool> has-selection: root.backup-index >= 0 && root.backup-index < root.backups.length;
+    property <BackupRow> selected: root.has-selection ? root.backups[root.backup-index] : { title: "" };
+    property <DriveItem> drive: root.has-drive ? root.drives[root.drive-index] : { title: "" };
+    property <bool> result-here: root.result-page == root.page;
+    property <bool> interrupted-first: root.backups.length > 0 && root.backups[0].interrupted;
+
+    function go(p: int) {
+        if (!root.locked) {
+            root.page = p;
+            root.confirming-wipe = 0;
+            root.result-page = -1;
+        }
+    }
 
     HorizontalLayout {
-        spacing: 0;
+        // ------------------------------------------------ sidebar
         Rectangle {
-            width: 232px;
+            width: 240px;
             background: Theme.sidebar-bg;
             VerticalLayout {
-                padding: 24px;
-                spacing: 12px;
-                Label { text: "ProfilePort"; font-size: 22px; font-weight: 700; }
-                Label { text: "Move files with confidence"; color: Theme.text-secondary; font-size: 12px; }
-                Rectangle { height: 18px; }
-                Button { text: "Back up"; enabled: !root.busy; clicked => { root.page = 0; } }
-                Button { text: "Verify or restore"; enabled: !root.busy; clicked => { root.page = 1; } }
+                padding: Theme.space-5;
+                spacing: Theme.space-1;
+                HorizontalLayout {
+                    padding-bottom: Theme.space-6;
+                    spacing: Theme.space-3;
+                    Rectangle {
+                        width: 36px;
+                        height: 36px;
+                        border-radius: Theme.radius-medium;
+                        background: Theme.accent;
+                        Icon { source: @image-url("icons/arrow-right-left.svg"); tint: Theme.on-accent; size: 18px; }
+                    }
+                    Label { text: "ProfilePort"; font-size: 18px; font-weight: Theme.weight-bold; }
+                }
+                NavItem { text: "Home"; icon: @image-url("icons/house.svg"); active: root.page == 0; clicked => { root.go(0); } }
+                NavItem { text: "Back up"; icon: @image-url("icons/hard-drive-upload.svg"); active: root.page == 1; clicked => { root.go(1); } }
+                NavItem { text: "Restore"; icon: @image-url("icons/hard-drive-download.svg"); active: root.page == 2; clicked => { root.go(2); } }
+                NavItem { text: "USB drive"; icon: @image-url("icons/usb.svg"); active: root.page == 3; clicked => { root.go(3); } }
                 Rectangle { vertical-stretch: 1; }
-                Label { text: "Offline · v" + root.version; color: Theme.text-tertiary; font-size: 12px; }
+                HorizontalLayout {
+                    spacing: Theme.space-2;
+                    Icon { source: @image-url("icons/shield-check.svg"); tint: Theme.success; size: 15px; }
+                    Label { text: "Offline · v" + root.version; color: Theme.text-tertiary; font-size: Theme.text-caption; }
+                }
             }
         }
+
         ScrollView {
             horizontal-stretch: 1;
             VerticalLayout {
-                padding: 32px;
-                spacing: 12px;
-                Label { text: root.page == 0 ? "Back up a PC" : "Verify or restore"; font-size: 28px; font-weight: 700; }
-                Label {
-                    text: root.page == 0 ? "Create an encrypted backup on a connected drive." : "Unlock a backup, check it, or restore it to a profile.";
-                    color: Theme.text-secondary;
-                    wrap: word-wrap;
+                padding: Theme.space-8;
+                padding-top: Theme.space-6;
+                spacing: Theme.space-5;
+                alignment: start;
+
+                // Page header.
+                VerticalLayout {
+                    spacing: Theme.space-1;
+                    HorizontalLayout {
+                        spacing: Theme.space-2;
+                        Icon { source: @image-url("icons/laptop.svg"); size: 15px; tint: Theme.text-tertiary; }
+                        Label {
+                            text: root.has-drive ? "Running on " + root.computer + " · drive " + root.drive.title : "Running on " + root.computer + " · no drive connected";
+                            color: Theme.text-tertiary;
+                            font-size: Theme.text-small;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    Label {
+                        text: root.page == 0 ? "What would you like to do?" : root.page == 1 ? "Back up a PC" : root.page == 2 ? "Restore a PC" : "USB drive";
+                        font-size: 30px;
+                        font-weight: Theme.weight-bold;
+                    }
                 }
+
+                // ================================================ Home
                 if root.page == 0: VerticalLayout {
-                    spacing: 8px;
-                    Label { text: "User profile"; font-weight: 600; }
-                    ComboBox { model: root.profiles; current-index <=> root.selected-profile; enabled: !root.busy && !root.awaiting-confirmation; selected(_) => { root.profile-selected(root.selected-profile); } }
-                    Label { text: "Source folder"; font-weight: 600; }
-                    LineEdit { text <=> root.source; placeholder-text: "C:\\Users\\name"; enabled: !root.busy && !root.awaiting-confirmation; }
-                    Label { text: "USB drive root"; font-weight: 600; }
-                    LineEdit { text <=> root.drive; placeholder-text: "E:\\"; enabled: !root.busy && !root.awaiting-confirmation; }
-                    Label { text: "Ticket number"; font-weight: 600; }
-                    LineEdit { text <=> root.ticket; enabled: !root.busy && !root.awaiting-confirmation; }
-                    Label { text: "The whole profile is copied, excluding cache and temporary folders. Cloud-only files and inaccessible files may be skipped."; wrap: word-wrap; color: Theme.text-secondary; }
-                    if !root.awaiting-confirmation: Button { text: "Prepare backup"; enabled: !root.busy; clicked => { root.prepare-backup(); } }
-                    if root.awaiting-confirmation: VerticalLayout {
-                        spacing: 8px;
-                        Label { text: "Write this code on the device tag"; font-weight: 700; }
-                        Label { text: root.displayed-code; font-size: 24px; font-weight: 700; }
-                        Label { text: "Without this code the backup cannot be restored or resumed. Do not put it in the ticket system."; wrap: word-wrap; color: Theme.text-secondary; }
-                        LineEdit { text <=> root.code-entry; placeholder-text: "Type the code back"; }
+                    spacing: Theme.space-5;
+                    if root.interrupted-first: Callout {
+                        warning: true;
                         HorizontalLayout {
-                            spacing: 8px;
-                            Button { text: "Confirm code and start backup"; enabled: !root.busy; clicked => { root.confirm-backup(); } }
+                            spacing: Theme.space-3;
+                            Icon { source: @image-url("icons/triangle-alert.svg"); tint: Theme.warning; size: 20px; }
+                            Label { text: "Backup interrupted"; font-weight: Theme.weight-semibold; }
+                            Label { text: root.backups[0].title + " stopped before it finished. Continue it on the PC it came from."; color: Theme.text-secondary; wrap: word-wrap; horizontal-stretch: 1; }
+                            Button {
+                                text: "Continue";
+                                icon: @image-url("icons/refresh-cw.svg");
+                                clicked => { root.backup-index = 0; root.backup-clicked(0); root.go(2); }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.space-4;
+                        height: 220px;
+                        ActionCard {
+                            title: "Back up a PC";
+                            description: "Copy a user's files from this computer to the USB drive, encrypted.";
+                            cta: "Start backup";
+                            icon: @image-url("icons/hard-drive-upload.svg");
+                            clicked => { root.go(1); }
+                        }
+                        ActionCard {
+                            title: "Restore a PC";
+                            description: "Put a backup from the USB drive into a user's profile on this computer.";
+                            cta: "Choose a backup";
+                            icon: @image-url("icons/hard-drive-download.svg");
+                            clicked => { root.go(2); }
+                        }
+                        ActionCard {
+                            title: "Manage USB drive";
+                            description: "See what's stored, check free space, and wipe the drive between customers.";
+                            cta: "Open drive";
+                            icon: @image-url("icons/usb.svg");
+                            clicked => { root.go(3); }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.space-4;
+                        // Drive.
+                        Card {
+                            width: 340px;
+                            VerticalLayout {
+                                padding: Theme.space-5;
+                                spacing: Theme.space-3;
+                                alignment: start;
+                                HorizontalLayout {
+                                    spacing: Theme.space-3;
+                                    Rectangle {
+                                        width: 40px;
+                                        height: 40px;
+                                        border-radius: Theme.radius-medium;
+                                        background: Theme.surface-sunken;
+                                        Icon { source: @image-url("icons/usb.svg"); size: 20px; }
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        Label { text: root.has-drive ? root.drive.title : "No drive connected"; font-weight: Theme.weight-semibold; overflow: elide; }
+                                        Label { text: root.has-drive ? root.drive.subtitle : "Plug in the USB drive; it appears here by itself."; color: Theme.text-secondary; font-size: Theme.text-small; wrap: word-wrap; }
+                                    }
+                                }
+                                if root.has-drive && root.drive.free-fraction >= 0: VerticalLayout {
+                                    spacing: Theme.space-2;
+                                    HorizontalLayout {
+                                        spacing: Theme.space-2;
+                                        alignment: start;
+                                        Label { text: root.drive.free-text; font-size: 28px; font-weight: Theme.weight-bold; }
+                                        Label { text: "free"; color: Theme.text-secondary; }
+                                    }
+                                    SpaceBar { free-fraction: root.drive.free-fraction; }
+                                }
+                                if root.old-backups > 0: HorizontalLayout {
+                                    spacing: Theme.space-2;
+                                    Icon { source: @image-url("icons/clock-3.svg"); tint: Theme.warning; size: 15px; }
+                                    Label { text: root.old-backups == 1 ? "1 backup is 14 or more days old" : root.old-backups + " backups are 14 or more days old"; color: Theme.warning; font-size: Theme.text-small; }
+                                }
+                                if root.has-drive && root.backups.length > 0: Button {
+                                    text: "Prepare for next customer";
+                                    icon: @image-url("icons/history.svg");
+                                    clicked => { root.go(3); root.begin-wipe-all(); }
+                                }
+                            }
+                        }
+                        // Backups on the drive.
+                        Card {
+                            horizontal-stretch: 1;
+                            VerticalLayout {
+                                padding: Theme.space-5;
+                                spacing: Theme.space-1;
+                                alignment: start;
+                                HorizontalLayout {
+                                    padding-bottom: Theme.space-2;
+                                    Heading { text: "On this drive"; horizontal-stretch: 1; }
+                                    if root.backups.length > 4: Button { text: "View all"; clicked => { root.go(3); } }
+                                }
+                                if root.backups.length == 0: Hint { text: root.has-drive ? root.backups-summary : "Backups on the USB drive are listed here."; }
+                                for row[i] in root.backups: BackupRowView {
+                                    visible: i < 4;
+                                    height: i < 4 ? self.min-height : 0px;
+                                    item: row;
+                                    clicked => { root.backup-index = i; root.backup-clicked(i); root.go(2); }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ================================================ Back up
+                if root.page == 1 && !root.awaiting-confirmation && !root.result-here: VerticalLayout {
+                    spacing: Theme.space-4;
+                    Step {
+                        number: "1";
+                        title: "Whose files?";
+                        for p[i] in root.profiles: ChoiceCard {
+                            icon: @image-url("icons/laptop.svg");
+                            title: p.title;
+                            badge: p.current ? "Signed in" : "";
+                            subtitle: p.subtitle;
+                            selected: root.source-index == i;
+                            clicked => { root.source-index = i; }
+                        }
+                        ChoiceCard {
+                            icon: @image-url("icons/file-text.svg");
+                            title: "Other folder…";
+                            subtitle: "A profile that isn't listed, e.g. on an attached old disk";
+                            clicked => { root.choose-source-folder(); }
+                        }
+                        Hint { text: "The whole profile is copied, except cache and temporary folders. Files only in OneDrive and files ProfilePort can't read are listed in the report, not copied."; }
+                    }
+                    Step {
+                        number: "2";
+                        title: "Back up to";
+                        for d[i] in root.drives: ChoiceCard {
+                            icon: @image-url("icons/usb.svg");
+                            title: d.title;
+                            subtitle: d.subtitle;
+                            free-fraction: d.free-fraction;
+                            selected: root.drive-index == i;
+                            clicked => { root.drive-clicked(i); }
+                        }
+                        if !root.has-drive: Callout {
+                            warning: true;
+                            Label { text: "No drive found. Plug in the USB drive; it appears here by itself."; wrap: word-wrap; }
+                        }
+                    }
+                    Step {
+                        number: "3";
+                        title: "Ticket number";
+                        LineEdit { text <=> root.ticket; placeholder-text: "e.g. 48231"; font-size: 16px; edited(_) => { root.ticket-edited(); } }
+                        Hint {
+                            text: root.ticket-hint != "" ? root.ticket-hint : "The only readable label on the drive. Use the job's ticket or reference number, never the customer's name.";
+                            color: root.ticket-hint != "" ? Theme.danger : Theme.text-secondary;
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: end;
+                        Button {
+                            text: "Create backup";
+                            primary: true;
+                            icon: @image-url("icons/arrow-right.svg");
+                            enabled: !root.busy && root.has-drive && root.profiles.length > 0 && root.ticket != "" && root.ticket-hint == "";
+                            clicked => { root.prepare-backup(); }
+                        }
+                    }
+                }
+                if root.page == 1 && root.awaiting-confirmation: Card {
+                    VerticalLayout {
+                        padding: Theme.space-8;
+                        spacing: Theme.space-4;
+                        alignment: start;
+                        Rectangle {
+                            width: 48px;
+                            height: 48px;
+                            border-radius: Theme.radius-medium;
+                            background: Theme.accent-subtle;
+                            Icon { source: @image-url("icons/lock.svg"); tint: Theme.accent; size: 24px; }
+                        }
+                        Label { text: "Store this transfer code in the ticket"; font-size: 22px; font-weight: Theme.weight-bold; }
+                        Label { text: "Ticket " + root.ticket; color: Theme.text-secondary; }
+                        Rectangle {
+                            height: 96px;
+                            border-radius: Theme.radius-large;
+                            background: Theme.surface-sunken;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            Label { text: root.displayed-code; font-size: 44px; font-weight: Theme.weight-bold; letter-spacing: 4px; horizontal-alignment: center; }
+                        }
+                        Label {
+                            text: "Put it in the ticket's sensitive-data field, not in ordinary notes, and don't take a photo of it. It is the only way to restore or continue this backup, and it is not stored on the drive.";
+                            wrap: word-wrap;
+                            color: Theme.text-secondary;
+                        }
+                        CheckBox { text: "I've stored the code in the ticket and checked it"; checked <=> root.code-stored; enabled: !root.busy; }
+                        HorizontalLayout {
+                            spacing: Theme.space-2;
+                            alignment: end;
                             Button { text: "Cancel"; enabled: !root.busy; clicked => { root.cancel-preparation(); } }
+                            Button { text: "Start backup"; primary: true; enabled: !root.busy && root.code-stored; clicked => { root.confirm-backup(); } }
                         }
                     }
                 }
-                if root.page == 1: VerticalLayout {
-                    spacing: 8px;
-                    Label { text: "USB drive root"; font-weight: 600; }
-                    HorizontalLayout {
-                        spacing: 8px;
-                        LineEdit { text <=> root.drive; placeholder-text: "E:\\"; enabled: !root.busy; horizontal-stretch: 1; }
-                        Button { text: "Find backups"; enabled: !root.busy; clicked => { root.scan-drive(); } }
+
+                // ================================================ Restore
+                if root.page == 2 && !root.result-here: VerticalLayout {
+                    spacing: Theme.space-4;
+                    Step {
+                        number: "1";
+                        title: "Choose the backup";
+                        if root.drives.length > 1: VerticalLayout {
+                            spacing: Theme.space-2;
+                            for d[i] in root.drives: ChoiceCard {
+                                icon: @image-url("icons/usb.svg");
+                                title: d.title;
+                                subtitle: d.subtitle;
+                                selected: root.drive-index == i;
+                                enabled: root.confirming-wipe == 0;
+                                clicked => { root.drive-clicked(i); }
+                            }
+                        }
+                        if !root.has-drive: Callout {
+                            warning: true;
+                            Label { text: "No drive found. Plug in the USB drive with the backup; it appears here by itself."; wrap: word-wrap; }
+                        }
+                        for row[i] in root.backups: BackupRowView {
+                            item: row;
+                            selected: root.backup-index == i;
+                            enabled: root.confirming-wipe == 0;
+                            clicked => { root.backup-index = i; root.backup-clicked(i); }
+                        }
+                        if root.has-drive && root.backups.length == 0: Hint { text: root.backups-summary; }
                     }
-                    if root.packages.length > 0: ComboBox { model: root.packages; current-index <=> root.selected-package; enabled: !root.busy; selected(_) => { root.package-selected(root.selected-package); } }
-                    Label { text: "Backup folder"; font-weight: 600; }
-                    LineEdit { text <=> root.package-path; placeholder-text: "Path to the backup folder on the USB drive"; enabled: !root.busy; }
-                    Label { text: "Transfer code"; font-weight: 600; }
-                    LineEdit { text <=> root.code-entry; placeholder-text: "Code from the device tag"; enabled: !root.busy; }
-                    Label { text: "Destination profile"; font-weight: 600; }
-                    ComboBox { model: root.profiles; current-index <=> root.target-profile; enabled: !root.busy; selected(_) => { root.target-selected(root.target-profile); } }
-                    Label { text: "Destination profile folder"; font-weight: 600; }
-                    LineEdit { text <=> root.target-path; placeholder-text: "C:\\Users\\name"; enabled: !root.busy; }
-                    CheckBox { text: "Allow restore to cloud-synced folders (files may be uploaded)"; checked <=> root.allow-cloud; enabled: !root.busy; }
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Button { text: "Resume backup"; enabled: !root.busy; clicked => { root.resume-backup(); } }
-                        Button { text: "Verify backup"; enabled: !root.busy; clicked => { root.verify-backup(); } }
-                        Button { text: "Restore files"; enabled: !root.busy; clicked => { root.restore-backup(); } }
-                        Button { text: "Wipe backup…"; enabled: !root.busy && !root.confirming-wipe; clicked => { root.begin-wipe(); } }
-                    }
-                    Label { text: "Existing files are not overwritten. Restore checks written files by default. Wiping destroys the backup's key and deletes it from the drive; it does not need the code."; wrap: word-wrap; color: Theme.text-secondary; }
-                    if root.confirming-wipe: VerticalLayout {
-                        spacing: 8px;
-                        Label { text: "Wipe backup from drive"; font-weight: 700; }
-                        Label { text: root.wipe-prompt; wrap: word-wrap; }
-                        LineEdit { text <=> root.wipe-entry; placeholder-text: "Ticket number"; enabled: !root.busy; }
-                        CheckBox { text: "Also overwrite all backup data before deleting (slow)"; checked <=> root.wipe-overwrite; enabled: !root.busy; }
+                    if root.has-selection && root.selected.partly-wiped && root.confirming-wipe == 0: Callout {
+                        warning: true;
+                        Label { text: "This backup was being wiped when it was interrupted. It can't be opened any more."; wrap: word-wrap; }
                         HorizontalLayout {
-                            spacing: 8px;
-                            Button { text: "Wipe now"; enabled: !root.busy && root.wipe-entry != ""; clicked => { root.wipe-backup(); } }
-                            Button { text: "Cancel"; enabled: !root.busy; clicked => { root.confirming-wipe = false; root.wipe-entry = ""; } }
+                            alignment: end;
+                            Button { text: "Finish wiping"; primary: true; clicked => { root.begin-wipe(); } }
+                        }
+                    }
+                    if root.has-selection && !root.selected.partly-wiped: Step {
+                        number: "2";
+                        title: "Transfer code";
+                        LineEdit { text <=> root.code-entry; placeholder-text: "From the ticket, e.g. 7KQ2-M9XD-4PWH"; font-size: 18px; edited(_) => { root.code-edited(); } }
+                        HorizontalLayout {
+                            spacing: Theme.space-2;
+                            if root.code-ok: Icon { source: @image-url("icons/circle-check.svg"); tint: Theme.success; size: 15px; }
+                            Hint {
+                                text: root.code-hint != "" ? root.code-hint : "Letter case, spaces and dashes don't matter.";
+                                color: root.code-ok ? Theme.success : root.code-hint != "" ? Theme.danger : Theme.text-secondary;
+                                horizontal-stretch: 1;
+                            }
+                        }
+                    }
+                    if root.has-selection && root.selected.interrupted && root.confirming-wipe == 0: Callout {
+                        warning: true;
+                        Label { text: "This backup was interrupted. Continue it on the old PC, with the profile in the same place, before restoring."; wrap: word-wrap; }
+                        HorizontalLayout {
+                            alignment: end;
+                            Button { text: "Continue backup"; icon: @image-url("icons/refresh-cw.svg"); enabled: root.code-ok; clicked => { root.resume-backup(); } }
+                        }
+                    }
+                    if root.has-selection && !root.selected.partly-wiped: Step {
+                        number: "3";
+                        title: "Restore to";
+                        for p[i] in root.profiles: ChoiceCard {
+                            icon: @image-url("icons/laptop.svg");
+                            title: p.title;
+                            badge: p.current ? "Signed in" : "";
+                            subtitle: p.subtitle;
+                            selected: root.target-index == i;
+                            clicked => { root.target-index = i; root.target-clicked(i); }
+                        }
+                        ChoiceCard {
+                            icon: @image-url("icons/file-text.svg");
+                            title: "Other folder…";
+                            subtitle: "Restore into a folder that isn't listed";
+                            clicked => { root.choose-target-folder(); }
+                        }
+                        Hint { text: "The user must have signed in on this PC once, so their profile exists. Existing files are never overwritten; restored files are read back and checked."; }
+                        if root.cloud-warning != "": Callout {
+                            warning: true;
+                            Label { text: "These folders are synced to the cloud. Files restored into them will be uploaded:"; wrap: word-wrap; font-weight: Theme.weight-semibold; }
+                            Label { text: root.cloud-warning; wrap: word-wrap; font-size: Theme.text-small; }
+                            CheckBox { text: "Restore into them anyway"; checked <=> root.allow-cloud; }
+                        }
+                    }
+                    if root.has-selection && !root.selected.partly-wiped && root.confirming-wipe == 0: HorizontalLayout {
+                        spacing: Theme.space-2;
+                        Button { text: "Wipe from drive…"; clicked => { root.begin-wipe(); } }
+                        Rectangle { horizontal-stretch: 1; }
+                        Button { text: "Check backup"; icon: @image-url("icons/shield-check.svg"); enabled: root.code-ok; clicked => { root.verify-backup(); } }
+                        Button {
+                            text: "Restore files";
+                            primary: true;
+                            icon: @image-url("icons/hard-drive-download.svg");
+                            enabled: root.code-ok && (root.cloud-warning == "" || root.allow-cloud);
+                            clicked => { root.restore-backup(); }
                         }
                     }
                 }
-                Rectangle { height: 1px; background: Theme.border; }
-                Label { text: root.status; font-size: 16px; font-weight: 700; wrap: word-wrap; }
-                Label { text: root.details; color: Theme.text-secondary; wrap: word-wrap; }
-                Rectangle { vertical-stretch: 1; }
+
+                // ================================================ USB drive
+                if root.page == 3 && !root.result-here: VerticalLayout {
+                    spacing: Theme.space-4;
+                    if !root.has-drive: Callout {
+                        warning: true;
+                        Label { text: "No drive found. Plug in the USB drive; it appears here by itself."; wrap: word-wrap; }
+                    }
+                    for d[i] in root.drives: ChoiceCard {
+                        icon: @image-url("icons/usb.svg");
+                        title: d.title;
+                        subtitle: d.subtitle;
+                        free-fraction: d.free-fraction;
+                        selected: root.drive-index == i;
+                        enabled: root.confirming-wipe == 0;
+                        clicked => { root.drive-clicked(i); }
+                    }
+                    if root.has-drive: Card {
+                        VerticalLayout {
+                            padding: Theme.space-5;
+                            spacing: Theme.space-1;
+                            HorizontalLayout {
+                                padding-bottom: Theme.space-2;
+                                spacing: Theme.space-2;
+                                Heading { text: "Backups"; horizontal-stretch: 1; }
+                                if root.backups.length > 0 && root.confirming-wipe == 0: Button {
+                                    text: "Prepare for next customer";
+                                    icon: @image-url("icons/history.svg");
+                                    clicked => { root.begin-wipe-all(); }
+                                }
+                            }
+                            if root.backups.length == 0: Hint { text: root.backups-summary; }
+                            for row[i] in root.backups: BackupRowView {
+                                item: row;
+                                selected: root.backup-index == i;
+                                enabled: root.confirming-wipe == 0;
+                                clicked => { root.backup-index = i; root.backup-clicked(i); }
+                            }
+                            if root.has-selection && root.confirming-wipe == 0: HorizontalLayout {
+                                padding-top: Theme.space-3;
+                                spacing: Theme.space-2;
+                                alignment: end;
+                                if !root.selected.partly-wiped: Button { text: "Restore…"; clicked => { root.go(2); } }
+                                Button { text: root.selected.partly-wiped ? "Finish wiping" : "Wipe " + root.selected.title + "…"; clicked => { root.begin-wipe(); } }
+                            }
+                        }
+                    }
+                    Hint { text: "Wiping destroys a backup's key and deletes it. On flash drives old blocks can survive inside the drive; they are encrypted, and the code that opens them is cleared from the ticket when the ticket is set to finished."; }
+                }
+
+                // ================================================ Wipe question
+                if root.confirming-wipe != 0 && !root.result-here: Callout {
+                    warning: true;
+                    HorizontalLayout {
+                        spacing: Theme.space-3;
+                        Icon { source: @image-url("icons/triangle-alert.svg"); tint: Theme.warning; size: 22px; }
+                        Heading { text: root.confirming-wipe == 2 ? "Prepare the drive for the next customer?" : "Wipe this backup from the drive?"; horizontal-stretch: 1; }
+                    }
+                    Label { text: root.wipe-question; wrap: word-wrap; }
+                    CheckBox { text: "Also overwrite all backup data first (takes about as long as the backup did)"; checked <=> root.wipe-overwrite; }
+                    HorizontalLayout {
+                        spacing: Theme.space-2;
+                        alignment: end;
+                        Button { text: "Cancel"; clicked => { root.confirming-wipe = 0; } }
+                        Button { text: root.confirming-wipe == 2 ? "Wipe all backups" : "Wipe backup"; primary: true; clicked => { root.wipe-confirmed(); } }
+                    }
+                }
+
+                // ================================================ Progress / result
+                if root.result-here: ResultCard {
+                    busy: root.busy;
+                    title: root.status;
+                    details: root.details;
+                    ok: root.status-ok;
+                    if !root.busy: HorizontalLayout {
+                        spacing: Theme.space-2;
+                        alignment: end;
+                        if root.offer-check: Button { text: "Check backup now"; icon: @image-url("icons/shield-check.svg"); clicked => { root.check-new-backup(); } }
+                        if root.offer-wipe: Button { text: "Wipe backup from drive…"; clicked => { root.result-page = -1; root.begin-wipe(); } }
+                        Button { text: "Done"; primary: !root.offer-check && !root.offer-wipe; clicked => { root.result-page = -1; } }
+                    }
+                }
             }
         }
     }
