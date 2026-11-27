@@ -25,6 +25,13 @@ pub enum Error {
     AlreadyComplete,
     #[error("the package already holds backed-up data or other files, so it was not deleted")]
     NotDiscardable,
+    #[error("this backup was partly wiped and can no longer be opened; run the wipe again to finish removing it")]
+    PartlyWiped,
+    #[error(
+        "the folder contains {0:?}, which is not part of a ProfilePort package, so nothing was wiped; \
+         check that you chose the right backup folder"
+    )]
+    NotWipeable(String),
     #[error("invalid ticket number {0:?}: use 1–32 letters, digits, '-' or '_'")]
     InvalidTicket(String),
 }

@@ -24,9 +24,10 @@ pub fn read_info(dir: &Path) -> Result<PackageInfo> {
     Ok(PackageInfo { dir: dir.to_path_buf(), header: read_header(dir)?, status: read_status(dir)? })
 }
 
-/// All packages under a transfers directory, newest first. Folders that are
-/// not packages are ignored; damaged packages are returned as errors.
-pub fn list_packages(transfers_dir: &Path) -> std::io::Result<Vec<Result<PackageInfo>>> {
+/// All packages under a transfers directory, newest first, each with its
+/// folder. Folders that are not packages are ignored; damaged and partly
+/// wiped packages are returned as errors, listed first.
+pub fn list_packages(transfers_dir: &Path) -> std::io::Result<Vec<(PathBuf, Result<PackageInfo>)>> {
     let mut out = Vec::new();
     for entry in fs::read_dir(transfers_dir)? {
         let entry = entry?;
@@ -35,10 +36,10 @@ pub fn list_packages(transfers_dir: &Path) -> std::io::Result<Vec<Result<Package
         }
         match read_info(&entry.path()) {
             Err(Error::NotAPackage) => {}
-            other => out.push(other),
+            other => out.push((entry.path(), other)),
         }
     }
-    out.sort_by_key(|r| std::cmp::Reverse(r.as_ref().map(|i| i.header.created_unix).unwrap_or(i64::MAX)));
+    out.sort_by_key(|(_, r)| std::cmp::Reverse(r.as_ref().map(|i| i.header.created_unix).unwrap_or(i64::MAX)));
     Ok(out)
 }
 

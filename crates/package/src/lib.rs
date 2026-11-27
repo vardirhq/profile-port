@@ -4,6 +4,7 @@
 //! A package is a directory holding an encrypted, chunked copy of a user
 //! profile. It is unlocked with a [`TransferCode`]; without the code only
 //! the ticket number, creation time and progress counters are readable.
+//! [`wipe`] destroys a package once the job is done.
 
 pub mod code;
 mod crypto;
@@ -11,6 +12,7 @@ mod error;
 pub mod format;
 mod log;
 mod reader;
+mod wipe;
 mod writer;
 
 pub use code::{CodeError, TransferCode};
@@ -20,4 +22,5 @@ pub use format::{
     BeginInfo, ChunkRef, Header, KnownFolder, KnownFolderEntry, Meta, PackageState, SkipReason, Status, Timestamp,
 };
 pub use reader::{list_packages, read_info, Entry, FileEntry, Manifest, PackageInfo, PackageReader};
+pub use wipe::{wipe, WipeOptions, WipeProgress, WipeReport};
 pub use writer::{FileResult, PackageWriter, PartialFile, ResumeState, WriterOptions};

@@ -81,6 +81,25 @@ enum Cmd {
         #[arg(long)]
         allow_cloud_folders: bool,
     },
+    /// Wipe backups from the drive once the job is done: destroy the key,
+    /// then delete the files. Asks for confirmation; cannot be undone.
+    Wipe {
+        /// Backup folder(s) to wipe
+        packages: Vec<PathBuf>,
+        /// Wipe backups on this drive instead (with --all or --older-than)
+        #[arg(long, conflicts_with = "packages")]
+        drive: Option<PathBuf>,
+        /// With --drive: every backup on the drive ("prepare for next customer")
+        #[arg(long, requires = "drive", conflicts_with = "older_than")]
+        all: bool,
+        /// With --drive: backups created at least this many days ago
+        #[arg(long, requires = "drive", value_name = "DAYS")]
+        older_than: Option<u32>,
+        /// Also overwrite all backup data before deleting it (slow: about as
+        /// long as the backup took)
+        #[arg(long)]
+        overwrite: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -95,6 +114,9 @@ fn main() -> ExitCode {
         Cmd::Verify { package, code } => run_verify(&package, code),
         Cmd::Restore { package, to, code, keep_both, no_verify, allow_cloud_folders } => {
             run_restore(&package, &to, code, keep_both, no_verify, allow_cloud_folders)
+        }
+        Cmd::Wipe { packages, drive, all, older_than, overwrite } => {
+            run_wipe(packages, drive.as_deref(), all, older_than, overwrite)
         }
     };
     match result {
@@ -147,7 +169,7 @@ fn list(drive: &Path) -> Res {
     }
     let now = now_unix();
     println!("{:<14} {:<17} {:>10} {:>8}  {:<14} FOLDER", "TICKET", "CREATED (UTC)", "SIZE", "FILES", "STATE");
-    for p in packages {
+    for (dir, p) in packages {
         match p {
             Ok(info) => {
                 let (bytes, files, state) = match &info.status {
@@ -167,7 +189,7 @@ fn list(drive: &Path) -> Res {
                     age
                 );
             }
-            Err(e) => println!("(damaged package: {e})"),
+            Err(e) => println!("{:<14} {}: {e}", "-", dir.file_name().unwrap_or_default().to_string_lossy()),
         }
     }
     Ok(Outcome::Clean)
@@ -403,14 +425,159 @@ fn run_restore(
     print_list("Links not restored (Windows recreates the standard ones)", &links);
 
     if r.fully_successful() && io::stdin().is_terminal() {
-        if let Some(answer) = prompt("\nRestore verified. Delete this backup from the drive now? [y/N] ")? {
+        println!("\nOnce the customer has checked their files, the backup should be wiped from the drive.");
+        if let Some(answer) = prompt("Restore verified. Wipe this backup from the drive now? [y/N] ")? {
             if answer.trim().eq_ignore_ascii_case("y") {
-                std::fs::remove_dir_all(package_dir)?;
-                println!("Backup deleted. Discard the device tag when the job is closed.");
+                drop(reader);
+                let w = wipe_one(package_dir, false)?;
+                print_wiped(&w);
             }
         }
     }
     Ok(if r.fully_successful() { Outcome::Clean } else { Outcome::Issues })
+}
+
+// ---------------------------------------------------------------- wipe
+
+fn run_wipe(packages: Vec<PathBuf>, drive: Option<&Path>, all: bool, older_than: Option<u32>, overwrite: bool) -> Res {
+    let targets: Vec<(PathBuf, String)> = match drive {
+        Some(drive) => {
+            if !all && older_than.is_none() {
+                return Err("with --drive, say which backups to wipe: --all, or --older-than DAYS".into());
+            }
+            wipe_candidates(drive, older_than)?
+        }
+        None if packages.is_empty() => {
+            return Err("name the backup folder(s) to wipe, or use --drive with --all or --older-than".into())
+        }
+        None => packages
+            .into_iter()
+            .map(|p| {
+                let label = describe_for_wipe(&p);
+                (p, label)
+            })
+            .collect(),
+    };
+    if targets.is_empty() {
+        println!("No backups to wipe.");
+        return Ok(Outcome::Clean);
+    }
+
+    println!("About to wipe {} backup(s). This cannot be undone:", targets.len());
+    for (_, label) in &targets {
+        println!("    {label}");
+    }
+    println!("Only wipe a backup once its restore is verified and the customer has checked their files.");
+    if overwrite {
+        println!("All backup data will be overwritten before it is deleted; this takes a while.");
+    }
+    // One named backup: type its ticket. Several, or a whole drive: type WIPE.
+    let expected = match targets.as_slice() {
+        [(dir, _)] if drive.is_none() => match package::read_info(dir) {
+            Ok(info) => info.header.ticket,
+            Err(_) => "WIPE".into(),
+        },
+        _ => "WIPE".into(),
+    };
+    let typed = prompt(&format!("\nType {expected} to confirm: "))?;
+    if typed.as_deref().map(str::trim) != Some(expected.as_str()) {
+        return Err("wipe cancelled: confirmation did not match; nothing was changed".into());
+    }
+
+    let mut failed = 0;
+    for (dir, _) in &targets {
+        match wipe_one(dir, overwrite) {
+            Ok(w) => print_wiped(&w),
+            Err(e) => {
+                failed += 1;
+                println!("✘ {}: {e}", dir.display());
+            }
+        }
+    }
+    if failed > 0 {
+        return Err(format!("{failed} backup(s) could not be wiped; see above").into());
+    }
+    Ok(Outcome::Clean)
+}
+
+/// The packages on `drive` to wipe, oldest first, with a one-line label each.
+/// Partly wiped packages are always included; damaged ones are listed so the
+/// technician knows they're there, but left alone.
+fn wipe_candidates(
+    drive: &Path,
+    older_than: Option<u32>,
+) -> Result<Vec<(PathBuf, String)>, Box<dyn std::error::Error>> {
+    let dir = transfers_dir(drive);
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let min_age = older_than.map(|d| i64::from(d) * 86_400);
+    let now = now_unix();
+    let mut out = Vec::new();
+    for (path, item) in package::list_packages(&dir)? {
+        match item {
+            Ok(info) => {
+                if min_age.is_none_or(|age| now - info.header.created_unix >= age) {
+                    out.push((info.header.created_unix, path.clone(), describe_for_wipe(&path)));
+                }
+            }
+            Err(package::Error::PartlyWiped) => out.push((i64::MIN, path.clone(), describe_for_wipe(&path))),
+            Err(e) => println!("Leaving {} alone: {e}", path.display()),
+        }
+    }
+    out.sort();
+    Ok(out.into_iter().map(|(_, p, d)| (p, d)).collect())
+}
+
+fn describe_for_wipe(dir: &Path) -> String {
+    let folder = dir.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    match package::read_info(dir) {
+        Ok(info) => {
+            let state = match &info.status {
+                Some(s) => state_label(s.state, s.skipped),
+                None => "unknown".into(),
+            };
+            format!(
+                "ticket {} · created {} UTC · {} · {}",
+                info.header.ticket,
+                utc_date_time(info.header.created_unix),
+                state,
+                folder
+            )
+        }
+        Err(package::Error::PartlyWiped) => format!("{folder} (partly wiped earlier)"),
+        Err(e) => format!("{} ({e})", dir.display()),
+    }
+}
+
+fn wipe_one(dir: &Path, overwrite: bool) -> Result<package::WipeReport, Box<dyn std::error::Error>> {
+    let mut last = Instant::now() - Duration::from_secs(1);
+    let mut shown = false;
+    let report = package::wipe(dir, &package::WipeOptions { overwrite_data: overwrite }, &mut |done, total| {
+        if io::stderr().is_terminal() && last.elapsed() >= Duration::from_millis(150) {
+            last = Instant::now();
+            shown = true;
+            eprint!("\r\x1b[2K  overwriting {} of {}", human_bytes(done), human_bytes(total));
+        }
+    });
+    if shown {
+        eprint!("\r\x1b[2K");
+    }
+    Ok(report?)
+}
+
+fn print_wiped(w: &package::WipeReport) {
+    let what = match &w.ticket {
+        Some(t) => format!("ticket {t}"),
+        None => w.dir.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+    };
+    let overwritten = if w.bytes_overwritten > 0 {
+        format!(", {} overwritten", human_bytes(w.bytes_overwritten))
+    } else {
+        String::new()
+    };
+    println!("✔ Wiped {what}: key destroyed, {} file(s) deleted{overwritten}.", w.files_removed);
+    println!("  Discard the device tag with the code when the job is closed.");
 }
 
 // ---------------------------------------------------------------- helpers

@@ -29,6 +29,10 @@ export component AppWindow inherits Window {
     in-out property <string> target-path;
     in-out property <string> code-entry;
     in-out property <bool> allow-cloud: false;
+    in-out property <bool> confirming-wipe: false;
+    in-out property <string> wipe-entry;
+    in-out property <bool> wipe-overwrite: false;
+    in property <string> wipe-prompt;
     in property <bool> busy: false;
     in property <bool> awaiting-confirmation: false;
     in property <string> displayed-code;
@@ -44,6 +48,8 @@ export component AppWindow inherits Window {
     callback resume-backup;
     callback verify-backup;
     callback restore-backup;
+    callback begin-wipe;
+    callback wipe-backup;
 
     HorizontalLayout {
         spacing: 0;
@@ -121,8 +127,21 @@ export component AppWindow inherits Window {
                         Button { text: "Resume backup"; enabled: !root.busy; clicked => { root.resume-backup(); } }
                         Button { text: "Verify backup"; enabled: !root.busy; clicked => { root.verify-backup(); } }
                         Button { text: "Restore files"; enabled: !root.busy; clicked => { root.restore-backup(); } }
+                        Button { text: "Wipe backup…"; enabled: !root.busy && !root.confirming-wipe; clicked => { root.begin-wipe(); } }
                     }
-                    Label { text: "Existing files are not overwritten. Restore checks written files by default."; wrap: word-wrap; color: Theme.text-secondary; }
+                    Label { text: "Existing files are not overwritten. Restore checks written files by default. Wiping destroys the backup's key and deletes it from the drive; it does not need the code."; wrap: word-wrap; color: Theme.text-secondary; }
+                    if root.confirming-wipe: VerticalLayout {
+                        spacing: 8px;
+                        Label { text: "Wipe backup from drive"; font-weight: 700; }
+                        Label { text: root.wipe-prompt; wrap: word-wrap; }
+                        LineEdit { text <=> root.wipe-entry; placeholder-text: "Ticket number"; enabled: !root.busy; }
+                        CheckBox { text: "Also overwrite all backup data before deleting (slow)"; checked <=> root.wipe-overwrite; enabled: !root.busy; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Button { text: "Wipe now"; enabled: !root.busy && root.wipe-entry != ""; clicked => { root.wipe-backup(); } }
+                            Button { text: "Cancel"; enabled: !root.busy; clicked => { root.confirming-wipe = false; root.wipe-entry = ""; } }
+                        }
+                    }
                 }
                 Rectangle { height: 1px; background: Theme.border; }
                 Label { text: root.status; font-size: 16px; font-weight: 700; wrap: word-wrap; }

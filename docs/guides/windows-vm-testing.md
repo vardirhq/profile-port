@@ -84,6 +84,16 @@ report. Capture non-sensitive evidence deliberately, checking it before sharing.
    does not establish that a folder is local. Do not use a real customer cloud
    account.
 
+9. **Wipe.** After a restore, select the backup and choose **Wipe backup…**.
+   Type a wrong ticket number: nothing should change. Type the right one and
+   wipe: the package folder should be gone, other packages and the restored
+   files untouched. Repeat with the overwrite option on a larger backup and
+   record how long it takes. Then detach the transfer disk in the middle of
+   an overwrite wipe, reattach it, and check that **Find backups** lists the
+   package as partly wiped, that the code no longer opens it, and that wiping
+   it again (typing `WIPE`) finishes. This doesn't show what a physical flash
+   drive keeps internally; that can't be checked from Windows.
+
 For each scenario, write PASS only for observed checks, FAIL for an unexpected
 result, and NOT TESTED when the environment does not support it. The included
 `scripts/windows-smoke.ps1` covers CLI scenarios, not GUI interaction; it uses

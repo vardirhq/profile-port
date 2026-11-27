@@ -14,7 +14,7 @@ anything that couldn't be copied.
 >   three). Not yet: `SeBackupPrivilege` for other users'
 >   files, VSS, loading offline registry hives, cache-bypassing verification.
 > - **Desktop UI:** early interface connected to the engine for backup,
->   resume, verification, and restore. It has not yet been interactively or
+>   resume, verification, restore and wiping a backup. It has not yet been interactively or
 >   visually validated on Windows clients. Drive and folder paths are entered
 >   manually; per-folder selection and durable reports are not implemented.
 
@@ -70,6 +70,8 @@ profileport-cli list --drive E:\              backups on the drive (no code need
 profileport-cli resume  <package-folder>         continue after an interruption
 profileport-cli verify  <package-folder>         decrypt and hash-check everything
 profileport-cli restore <package-folder> --to C:\Users\anna.smith [--keep-both]
+profileport-cli wipe    <package-folder>         destroy the key, then delete the backup
+profileport-cli wipe --drive E:\ --all           "prepare for next customer"
 ```
 
 The desktop app is `ProfilePort.exe`; the CLI is deliberately named
@@ -87,6 +89,12 @@ included), and adapts file names the target can't use, reporting each
 rename. If a target folder is synced to OneDrive or similar, restore asks
 first, because restoring there uploads the files. See
 [ADR 0006](docs/decisions/0006-cross-platform-restore.md).
+
+When the job is done, `wipe` (or **Wipe backup…** in the desktop app)
+destroys the package's key and deletes it from the drive. On flash drives
+this can't guarantee that no old blocks survive inside the drive. Those are
+encrypted, and the code that opens them exists only on the device tag, so
+discard the tag too. See [security](docs/development/security.md#wiping-backups-from-the-drive).
 
 Restore never overwrites or deletes anything. Existing files are left alone
 and reported (or, with `--keep-both`, restored as `name (restored).ext`).
@@ -112,10 +120,10 @@ this on every push and attaches both `.exe` files to the run as an artifact.
 
 | Where | What |
 |---|---|
-| Unit and integration tests (Linux and Windows CI) | Transfer codes, encryption and tamper detection, plaintext-leak check, torn writes, crash-and-resume (including repeated crashes and source files changed meanwhile), restore safety (no overwrite, no following destination links, path validation), idempotent restore |
-| `scripts/unix-smoke.sh` (Linux and macOS CI) | The real CLI end to end: export, list, verify, restore to another user, re-restore; names with `:`, Unicode, symlinks, caches, timestamps |
+| Unit and integration tests (Linux and Windows CI) | Transfer codes, encryption and tamper detection, plaintext-leak check, wiping (only package files touched, interrupted wipe finished on rerun, links not followed), torn writes, crash-and-resume (including repeated crashes and source files changed meanwhile), restore safety (no overwrite, no following destination links, path validation), idempotent restore |
+| `scripts/unix-smoke.sh` (Linux and macOS CI) | The real CLI end to end: export, list, verify, restore to another user, re-restore, wipe (wrong ticket refused, stray file refused, `--overwrite`, `--drive --all`); names with `:`, Unicode, symlinks, caches, timestamps |
 | `scripts/windows-smoke.ps1` (Windows CI) | Junctions and loops, paths over 260 characters, a file locked by another process, read-only, hidden, Mark of the Web, timestamps, restoring to a different username. Known gaps are listed, not hidden |
-| Not yet tested | Real Windows 10/11 *client* PCs and Macs, real USB sticks being unplugged, OneDrive placeholders, iCloud, BitLocker, ARM64 Windows, the GUI on Windows |
+| Not yet tested | Real Windows 10/11 *client* PCs and Macs, real USB sticks being unplugged (including during a wipe), what a wiped flash drive still holds internally, OneDrive placeholders, iCloud, BitLocker, ARM64 Windows, the GUI on Windows |
 
 ## Key decisions
 

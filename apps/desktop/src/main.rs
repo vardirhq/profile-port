@@ -126,53 +126,22 @@ fn main() -> Result<(), slint::PlatformError> {
     let package_paths = packages.clone();
     app.on_scan_drive(move || {
         if let Some(app) = weak.upgrade() {
-            let root = PathBuf::from(app.get_drive().as_str());
-            let dir = engine::transfers_dir(&root);
-            if !root.is_dir() {
-                app.set_status("Choose an existing drive first".into());
-                return;
-            }
-            if !dir.is_dir() {
-                app.set_packages(ModelRc::new(VecModel::default()));
-                package_paths.borrow_mut().clear();
-                app.set_status("No backups found on this drive".into());
-                return;
-            }
-            match engine::package::list_packages(&dir) {
-                Ok(items) => {
-                    let mut paths = Vec::new();
-                    let mut labels: Vec<SharedString> = Vec::new();
-                    let mut damaged = 0;
-                    for item in items {
-                        match item {
-                            Ok(info) => {
-                                let state = info
-                                    .status
-                                    .as_ref()
-                                    .map(|s| format!("{:?}", s.state))
-                                    .unwrap_or_else(|| "unknown".into());
-                                labels.push(
-                                    format!(
-                                        "Ticket {} · {} · {}",
-                                        info.header.ticket,
-                                        state,
-                                        info.dir.file_name().unwrap_or_default().to_string_lossy()
-                                    )
-                                    .into(),
-                                );
-                                paths.push(info.dir);
-                            }
-                            Err(_) => damaged += 1,
-                        }
-                    }
-                    app.set_status(format!("{} backups found; {} damaged entries", paths.len(), damaged).into());
+            app.set_confirming_wipe(false);
+            match transfer::list_backups(&PathBuf::from(app.get_drive().as_str())) {
+                Ok((paths, labels, status)) => {
+                    app.set_status(status.into());
+                    app.set_details("".into());
+                    let labels: Vec<SharedString> = labels.into_iter().map(Into::into).collect();
                     app.set_packages(ModelRc::new(VecModel::from(labels)));
+                    app.set_selected_package(0);
                     if let Some(first) = paths.first() {
                         app.set_package_path(first.to_string_lossy().as_ref().into());
                     }
                     *package_paths.borrow_mut() = paths;
                 }
                 Err(e) => {
+                    app.set_packages(ModelRc::new(VecModel::default()));
+                    package_paths.borrow_mut().clear();
                     app.set_status("Could not list backups".into());
                     app.set_details(e.to_string().into());
                 }
@@ -182,7 +151,39 @@ fn main() -> Result<(), slint::PlatformError> {
     let weak = app.as_weak();
     app.on_package_selected(move |i| {
         if let (Some(app), Some(path)) = (weak.upgrade(), packages.borrow().get(i as usize)) {
+            app.set_confirming_wipe(false);
             app.set_package_path(path.to_string_lossy().as_ref().into());
+        }
+    });
+    let weak = app.as_weak();
+    app.on_begin_wipe(move || {
+        if let Some(app) = weak.upgrade() {
+            match transfer::wipe_confirmation(&PathBuf::from(app.get_package_path().as_str())) {
+                Ok((_, prompt)) => {
+                    app.set_wipe_entry("".into());
+                    app.set_wipe_prompt(prompt.into());
+                    app.set_confirming_wipe(true);
+                }
+                Err(e) => {
+                    app.set_status("Can't wipe this folder".into());
+                    app.set_details(e.to_string().into());
+                }
+            }
+        }
+    });
+    let weak = app.as_weak();
+    app.on_wipe_backup(move || {
+        if let Some(app) = weak.upgrade() {
+            let path = PathBuf::from(app.get_package_path().as_str());
+            let typed = app.get_wipe_entry().to_string();
+            let overwrite = app.get_wipe_overwrite();
+            app.set_confirming_wipe(false);
+            app.set_wipe_entry("".into());
+            run_job(&app, "Wiping backup…", move |weak| {
+                let text = transfer::wipe_package(&path, &typed, overwrite, &mut progress_callback(weak))
+                    .map_err(|e| e.to_string())?;
+                Ok(("Backup wiped from the drive".into(), text))
+            });
         }
     });
     let prepared: Prepared = Arc::new(Mutex::new(None));
@@ -319,6 +320,12 @@ fn main() -> Result<(), slint::PlatformError> {
                 d.extend(r.conflicts.iter().map(|(p, c)| format!("Conflict: {p} — {c:?}")));
                 d.extend(r.renamed.iter().map(|(p, n, _)| format!("Renamed: {p} → {n}")));
                 d.extend(r.links_not_restored.iter().map(|(p, t)| format!("Link not restored: {p} → {t}")));
+                if r.fully_successful() {
+                    d.push(
+                        "Once the customer has checked their files, use \"Wipe backup…\" to remove it from the drive."
+                            .into(),
+                    );
+                }
                 Ok((title.into(), d.join("\n")))
             });
         }

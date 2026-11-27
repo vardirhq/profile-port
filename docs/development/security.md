@@ -58,11 +58,49 @@ a substitute for checking the encrypted manifest/content.
 
 Use synthetic test data and isolated test drives. Confirm all destinations
 before writing. Review skipped and changed files, retain the original and an
-independent copy, and perform an independent restore check. The desktop has no
-USB wipe or cleanup feature. The CLI can offer an interactive package deletion
-following a restore it considers successful; decline until independent checks
-are complete. Deleting a package or losing its only code can make recovery
-impossible.
+independent copy, and perform an independent restore check.
+
+## Wiping backups from the drive
+
+Both apps can wipe a package: the CLI's `wipe` command (and its offer after a
+fully successful restore) and the desktop's **Wipe backup…** action. A wipe
+first overwrites `header.bin` in place, which destroys the wrapped package
+key, then deletes the package's files. Optionally (`--overwrite`, or the
+desktop checkbox) it overwrites the manifest and pack data with random bytes
+before deleting them. Wiping needs no transfer code, only the ticket number
+typed back (or `WIPE` for several backups, or one already partly wiped). It
+refuses folders holding anything that isn't part of a package. The details
+are in [the package format](../package-format.md#wiping).
+
+What a wipe does and doesn't achieve:
+
+- **Within the filesystem**, the key is overwritten and the files are gone.
+  The package can't be opened with the code any more, and the drive no longer
+  lists it.
+- **On flash media**, wear levelling can keep earlier copies of overwritten
+  blocks where only the drive's controller can read them. Everything in a
+  package was encrypted before it was written, so such remnants are
+  ciphertext, and an old copy of the header still needs the transfer code.
+  **Discarding the device tag with the code is part of the wipe.** Neither
+  ProfilePort nor this document can prove that a specific drive keeps no
+  remnants; treat the encryption plus the discarded code as the protection,
+  and the wipe as removing the package from normal reach.
+- **Wear levelling is not something `--overwrite` defeats.** It mainly helps
+  on media that overwrite in place (hard drives) and against simple undelete
+  tools. It takes about as long as the backup did.
+- The wipe removes the package from the transfer drive only. Restored files on
+  the target PC are plaintext by design, and the source PC still holds the
+  original data. Nothing here removes data from either, or from cloud folders
+  a restore was allowed to write into.
+- Filesystem metadata (directory entries, timestamps, the ticket-based folder
+  name) can outlive a wipe in the filesystem's own structures. Ticket numbers
+  should therefore identify no one outside the store's own system.
+- There is no recovery from a wipe. Only wipe once the restore is verified and
+  the customer has checked their files. "Recovery job" protection (ADR 0002)
+  is not implemented; the technician decides.
+
+Losing a package's only code also makes recovery impossible, so protect the
+device tag until the job is closed.
 
 Report suspected vulnerabilities privately through the repository owner's
 established contact route if available; do not include real customer data.

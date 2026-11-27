@@ -21,6 +21,8 @@ use crate::crypto::KdfParams;
 use crate::error::{Error, Result};
 
 pub const MAGIC: &[u8; 8] = b"PPORTPKG";
+/// Replaces [`MAGIC`] when a wipe has destroyed the header (see `wipe.rs`).
+pub const WIPED_MAGIC: &[u8; 8] = b"PPORTWIP";
 pub const FORMAT_VERSION: u16 = 1;
 
 pub const HEADER_FILE: &str = "header.bin";
@@ -258,6 +260,9 @@ pub fn read_header(dir: &Path) -> Result<Header> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(Error::NotAPackage),
         Err(e) => return Err(e.into()),
     };
+    if bytes.len() >= 8 && &bytes[..8] == WIPED_MAGIC {
+        return Err(Error::PartlyWiped);
+    }
     if bytes.len() < 10 || &bytes[..8] != MAGIC {
         return Err(Error::NotAPackage);
     }

@@ -3,7 +3,7 @@
 **Status:** Accepted
 
 
-**Implementation status:** The package format is implemented, but this record also contains design alternatives and future operational features. Use the [format specification](../package-format.md) and [security guide](../development/security.md) for the current format and threat boundaries. Plaintext status exposes aggregate file and byte counts; per-chunk authentication is provided by AEAD, while the manifest stores a BLAKE3 hash per file (not a separate BLAKE3 hash per chunk). Full metadata preservation, recovery-job flags, protected reset, and secure erasure are not implemented guarantees.
+**Implementation status:** The package format is implemented, but this record also contains design alternatives and future operational features. Use the [format specification](../package-format.md) and [security guide](../development/security.md) for the current format and threat boundaries. Plaintext status exposes aggregate file and byte counts; per-chunk authentication is provided by AEAD, while the manifest stores a BLAKE3 hash per file (not a separate BLAKE3 hash per chunk). Full metadata preservation, recovery-job flags and a configurable cleanup age are not implemented (both apps mark backups 14 or more days old). Wiping is implemented (CLI `wipe`, desktop **Wipe backup…**): the header is overwritten in place to destroy the wrapped key, data can optionally be overwritten, then the files are deleted ([format](../package-format.md#wiping)). That is crypto-erase within the filesystem; as this record explains, on flash media it relies on the discarded transfer code for remnants the drive keeps.
 
 ## Context
 

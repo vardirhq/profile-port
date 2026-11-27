@@ -103,8 +103,33 @@ It does not migrate application settings using specialized adapters or merge
 registry hives. A restore of files is not the same as a complete working
 application migration.
 
+## Wipe the backup from the drive
+
+When the restore is verified and the customer has checked their files:
+
+1. On **Verify or restore**, select the backup (or enter its folder) and
+   choose **Wipe backup…**. No transfer code is needed.
+2. Type the ticket number shown in the instructions. For a backup listed as
+   *partly wiped*, type `WIPE`. Optionally tick **Also overwrite all backup
+   data before deleting**; it takes about as long as the backup did.
+3. Choose **Wipe now**. The backup's key is destroyed first, then its files
+   are deleted. **Cancel** leaves everything as it was.
+4. Discard the device tag with the code when the job is closed.
+
+A wipe can't be undone. It refuses a folder that contains anything other than
+package files. On flash drives it can't guarantee that no old blocks remain
+inside the drive; those are encrypted and need the code, which is why the
+device tag must be discarded. See
+[security](../development/security.md#wiping-backups-from-the-drive). Backups 14
+or more days old are marked "wipe when done" in the **Find backups** list.
+Wiping every backup on a drive at once is only available in the CLI
+(`profileport-cli wipe --drive E:\ --all`).
+
+This has been built and its logic tested on Linux; the wipe screen has not
+been tried on Windows.
+
 ## When something goes wrong
 
 See [troubleshooting](troubleshooting.md). Do not delete the original data or
-the package merely because the UI reports success. A transfer code is required
+wipe the package merely because the UI reports success. A transfer code is required
 for recovery; there is no documented code-reset or recovery mechanism.

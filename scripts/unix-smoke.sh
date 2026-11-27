@@ -82,6 +82,32 @@ mask <<<"$again"
 check "second restore recognises files already in place" contains "$again" 'already there with identical content'
 check "second restore reports no conflicts" test -z "$(grep 'Name conflicts' <<<"$again")"
 
+echo "== Wipe"
+# A second backup, so we can check a wipe touches only its own package.
+"$EXE" export "$src/Documents" --drive "$drive" --ticket 2002 --computer SMOKE --no-confirm </dev/null >/dev/null 2>&1
+pkg2="$(ls -d "$drive"/ProfilePort/transfers/2002-*)"
+wrong="$(echo 9999 | "$EXE" wipe "$pkg" 2>&1)"
+wec=$?
+check "wipe with the wrong ticket typed is refused (exit 2)" test "$wec" -eq 2
+check "refused wipe leaves the backup in place" test -f "$pkg/header.bin"
+printf 'notes' >"$pkg/packs/stray.txt"
+stray="$(echo 2001 | "$EXE" wipe "$pkg" 2>&1)"
+check "wipe refuses a folder with files that aren't part of a backup" contains "$stray" 'not part of a ProfilePort package'
+check "refused wipe leaves the stray file alone" test -f "$pkg/packs/stray.txt"
+rm "$pkg/packs/stray.txt"
+wout="$(echo 2001 | "$EXE" wipe "$pkg" --overwrite 2>&1)"
+wec=$?
+echo "$wout"
+check "wipe succeeds (exit 0)" test "$wec" -eq 0
+check "wipe reports the key destroyed" contains "$wout" 'key destroyed'
+check "wiped backup folder is gone" test ! -e "$pkg"
+check "other backup untouched by the wipe" test -f "$pkg2/header.bin"
+check "restored files untouched by the wipe" same_text "$dst/Documents/Deep/Deeper/deep.txt" deep
+check "source untouched by the wipe" same_text "$src/Documents/report.txt" 'quarterly numbers'
+dout="$(echo WIPE | "$EXE" wipe --drive "$drive" --all 2>&1)"
+check "wipe --all clears the drive" test -z "$(ls -A "$drive/ProfilePort/transfers")"
+check "list shows no backups after wipe --all" contains "$("$EXE" list --drive "$drive" 2>&1)" 'No backups'
+
 echo "== Profiles"
 "$EXE" profiles
 check "profiles command runs" "$EXE" profiles

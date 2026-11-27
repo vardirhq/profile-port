@@ -174,3 +174,34 @@ furthest committed chunk, truncate that pack there, delete later packs,
 and continue. A file with `FileStart` but no `FileEnd` is continued from
 its committed chunks if the source file is unchanged (same size and
 modified time). Otherwise it is aborted and copied again.
+
+## Wiping
+
+A wipe (`profileport_package::wipe`) removes a package once the job is done.
+It does three things, syncing each to the drive before the next:
+
+1. **Destroy the key.** `header.bin` is overwritten in place, at its
+   existing length, with `"PPORTWIP"` (8 bytes) followed by random bytes. The
+   wrapped package key is gone, so the package can't be opened even with its
+   code. Readers report such a folder as *partly wiped* rather than ignoring
+   it, so an interrupted wipe stays visible.
+2. **Overwrite the data** (optional). `manifest.log` and every pack are
+   overwritten in place with random bytes.
+3. **Delete** the packs, `packs/`, `manifest.log`, `status.cbor` (and
+   `status.tmp`), then `header.bin`, then the package folder.
+
+Before changing anything, the wipe checks that the folder is a real
+directory (not a link) holding only a `header.bin` that starts with
+`"PPORTPKG"` or `"PPORTWIP"`, `status.cbor`/`status.tmp`, `manifest.log`, and
+a `packs/` directory of regular files named `NNNNNN.pack`. Anything else, and
+nothing is touched. An empty folder (a wipe interrupted after deleting the
+header) is removed. Rerunning an interrupted wipe finishes it.
+
+**Limits.** An in-place overwrite reaches the same blocks *as the
+filesystem sees them*. Flash drives and SSDs remap writes internally (wear
+levelling), so earlier copies of a block can survive where only the drive's
+controller can read them. Those are ciphertext. A surviving copy of the old
+header still opens with the transfer code, which is why the code lives only
+on the paper device tag: once the tag is discarded, remnants are unreadable.
+See [ADR 0002](decisions/0002-package-format.md#key-management).
+

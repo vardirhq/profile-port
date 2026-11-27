@@ -306,7 +306,7 @@ fn listing_finds_packages_and_ignores_other_folders() {
     }
     let list = list_packages(tmp.path()).unwrap();
     assert_eq!(list.len(), 2);
-    assert!(list.iter().all(|r| r.is_ok()));
+    assert!(list.iter().all(|(p, r)| r.as_ref().is_ok_and(|i| i.dir == *p)));
 }
 
 /// A crash right after a chunk was written but before it was committed
@@ -409,4 +409,158 @@ fn discard_refuses_a_folder_with_unexpected_files() {
     assert!(matches!(w.discard(), Err(Error::NotDiscardable)));
     assert!(dir.join("notes.txt").is_file());
     PackageReader::open(&dir, &code).expect("the package itself is intact");
+}
+
+fn finished_package(dir: &Path, ticket: &str) -> TransferCode {
+    let (mut w, code) = PackageWriter::create(dir, ticket, begin(), opts()).unwrap();
+    for i in 0..4 {
+        let d = data(3000, i);
+        w.add_file(
+            &format!("Documents/f{i}.bin"),
+            Meta::default(),
+            d.len() as u64,
+            &mut Cursor::new(&d),
+            &mut unchanged(),
+        )
+        .unwrap();
+    }
+    w.finish().unwrap();
+    code
+}
+
+#[test]
+fn wipe_removes_the_package_and_only_the_package() {
+    let tmp = tempfile::tempdir().unwrap();
+    let transfers = tmp.path().join("transfers");
+    let dir = transfers.join("48231-aa");
+    let other = transfers.join("48232-bb");
+    fs::create_dir(&transfers).unwrap();
+    finished_package(&dir, "48231");
+    let other_code = finished_package(&other, "48232");
+
+    let r = wipe(&dir, &WipeOptions::default(), &mut |_, _| {}).unwrap();
+    assert_eq!(r.ticket.as_deref(), Some("48231"));
+    assert!(!r.was_partly_wiped);
+    assert!(r.files_removed >= 4, "header, status, log and packs: {}", r.files_removed);
+    assert_eq!(r.bytes_overwritten, 0);
+    assert!(!dir.exists());
+    assert!(transfers.is_dir(), "the transfers folder stays");
+    PackageReader::open(&other, &other_code).unwrap().manifest().unwrap();
+}
+
+#[test]
+fn wipe_with_overwrite_covers_every_data_byte() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("pkg");
+    finished_package(&dir, "1");
+    let expected: u64 = walk(&dir)
+        .iter()
+        .filter(|p| p.extension().is_some_and(|e| e == "pack") || p.file_name().is_some_and(|n| n == LOG_FILE))
+        .map(|p| fs::metadata(p).unwrap().len())
+        .sum();
+    let mut last = (0, 0);
+    let r = wipe(&dir, &WipeOptions { overwrite_data: true }, &mut |done, total| last = (done, total)).unwrap();
+    assert!(expected > 12_000);
+    assert_eq!(r.bytes_overwritten, expected);
+    assert_eq!(last, (expected, expected));
+    assert!(!dir.exists());
+}
+
+#[test]
+fn interrupted_wipe_leaves_an_unopenable_package_that_can_be_wiped_again() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("pkg");
+    let code = finished_package(&dir, "1");
+    let original = fs::read(dir.join("header.bin")).unwrap();
+
+    // Simulate a drive pulled right after step 1 of the wipe: header destroyed,
+    // everything else still there.
+    let mut wiped = original.clone();
+    wiped[..8].copy_from_slice(format::WIPED_MAGIC);
+    for b in &mut wiped[8..] {
+        *b = 0x5a;
+    }
+    fs::write(dir.join("header.bin"), &wiped).unwrap();
+    assert!(matches!(PackageReader::open(&dir, &code), Err(Error::PartlyWiped)));
+    assert!(matches!(read_info(&dir), Err(Error::PartlyWiped)));
+    let listed = list_packages(tmp.path()).unwrap();
+    assert!(
+        matches!(listed.as_slice(), [(p, Err(Error::PartlyWiped))] if *p == dir),
+        "a half-wiped package is listed, not hidden"
+    );
+
+    let r = wipe(&dir, &WipeOptions::default(), &mut |_, _| {}).unwrap();
+    assert!(r.was_partly_wiped);
+    assert_eq!(r.ticket, None);
+    assert!(!dir.exists());
+}
+
+#[test]
+fn refused_wipe_changes_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("pkg");
+    let code = finished_package(&dir, "1");
+    let before: Vec<_> = walk(&dir).iter().map(|p| (p.clone(), fs::read(p).unwrap())).collect();
+    fs::write(dir.join("notes.txt"), b"not ours").unwrap();
+    let e = wipe(&dir, &WipeOptions { overwrite_data: true }, &mut |_, _| {}).unwrap_err();
+    assert!(matches!(&e, Error::NotWipeable(n) if n == "notes.txt"), "{e}");
+    for (p, bytes) in before {
+        assert_eq!(fs::read(&p).unwrap(), bytes, "{} changed", p.display());
+    }
+    PackageReader::open(&dir, &code).unwrap().manifest().unwrap();
+}
+
+#[test]
+fn wipe_refuses_folders_that_are_not_packages() {
+    let tmp = tempfile::tempdir().unwrap();
+    // A user folder with a file that happens to be called header.bin.
+    let user = tmp.path().join("Documents");
+    fs::create_dir(&user).unwrap();
+    fs::write(user.join("header.bin"), b"some other program's file").unwrap();
+    assert!(matches!(wipe(&user, &WipeOptions::default(), &mut |_, _| {}), Err(Error::NotAPackage)));
+    assert!(user.join("header.bin").exists());
+
+    // Package-shaped, but with something extra inside packs/.
+    let dir = tmp.path().join("pkg");
+    finished_package(&dir, "1");
+    fs::write(dir.join(PACKS_DIR).join("photo.jpg"), b"x").unwrap();
+    let e = wipe(&dir, &WipeOptions::default(), &mut |_, _| {}).unwrap_err();
+    assert!(matches!(&e, Error::NotWipeable(n) if n == "packs/photo.jpg"), "{e}");
+    assert!(dir.join("header.bin").exists());
+
+    // Package files without a header: not recognisable, so left alone.
+    let headless = tmp.path().join("headless");
+    fs::create_dir_all(headless.join(PACKS_DIR)).unwrap();
+    fs::write(headless.join(LOG_FILE), b"x").unwrap();
+    assert!(matches!(wipe(&headless, &WipeOptions::default(), &mut |_, _| {}), Err(Error::NotAPackage)));
+    assert!(headless.join(LOG_FILE).exists());
+
+    // An empty folder (a wipe that got as far as deleting the header) goes.
+    let empty = tmp.path().join("empty");
+    fs::create_dir(&empty).unwrap();
+    wipe(&empty, &WipeOptions::default(), &mut |_, _| {}).unwrap();
+    assert!(!empty.exists());
+
+    assert!(matches!(
+        wipe(&tmp.path().join("missing"), &WipeOptions::default(), &mut |_, _| {}),
+        Err(Error::NotAPackage)
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn wipe_does_not_follow_links() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("pkg");
+    finished_package(&dir, "1");
+    let link = tmp.path().join("link");
+    std::os::unix::fs::symlink(&dir, &link).unwrap();
+    assert!(matches!(wipe(&link, &WipeOptions::default(), &mut |_, _| {}), Err(Error::NotAPackage)));
+    assert!(dir.join("header.bin").exists());
+
+    let outside = tmp.path().join("outside.pack");
+    fs::write(&outside, b"user data").unwrap();
+    std::os::unix::fs::symlink(&outside, dir.join(PACKS_DIR).join("999999.pack")).unwrap();
+    assert!(matches!(wipe(&dir, &WipeOptions { overwrite_data: true }, &mut |_, _| {}), Err(Error::NotWipeable(_))));
+    assert_eq!(fs::read(&outside).unwrap(), b"user data");
 }
