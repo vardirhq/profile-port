@@ -1,0 +1,8 @@
+# Link the C runtime statically on Windows, so the .exe files run on a freshly
+# installed PC without the Visual C++ Redistributable (vcruntime140.dll).
+# CI checks the release builds import no VC runtime DLL.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

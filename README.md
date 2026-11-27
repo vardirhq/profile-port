@@ -118,6 +118,11 @@ scripts/screenshot.sh                     # regenerate docs/screenshots (Linux +
 For a Windows release build: `cargo build --release -p profileport-cli -p profileport-desktop`
 on Windows (x64 or ARM64 native; see ADR 0005 on why not 32-bit). CI does
 this on every push and attaches both `.exe` files to the run as an artifact.
+The C runtime is linked statically (`.cargo/config.toml`), so each `.exe` runs
+on its own, without installing the Visual C++ Redistributable; CI checks this.
+The files are not code-signed, so Windows SmartScreen may warn the first time.
+If you got them from a downloaded zip, unblock them once (Properties →
+Unblock) before copying them to the drives.
 
 ### What is tested where
 

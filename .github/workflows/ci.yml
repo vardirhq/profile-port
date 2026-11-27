@@ -68,6 +68,20 @@ jobs:
         run: cargo test -p profileport-desktop
       - name: Release builds
         run: cargo build --release -p profileport-cli -p profileport-desktop
+      # The C runtime is linked statically (.cargo/config.toml), so the exes
+      # must not import the Visual C++ runtime DLLs a fresh Windows may lack.
+      - name: Executables need no Visual C++ Redistributable
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($exe in 'target/release/ProfilePort.exe', 'target/release/profileport-cli.exe') {
+            $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($exe))
+            foreach ($dll in 'vcruntime140', 'vcruntime140_1', 'msvcp140') {
+              if ($text -match "(?i)\b$dll\.dll") { Write-Host "$exe imports $dll.dll"; $failed = $true }
+            }
+          }
+          if ($failed) { exit 1 }
+          Write-Host 'No Visual C++ runtime DLL imported.'
       - name: Windows smoke test (junctions, long paths, locked files, attributes, ADS)
         shell: pwsh
         run: ./scripts/windows-smoke.ps1 -Exe target/release/profileport-cli.exe
