@@ -26,15 +26,15 @@ function Gap([bool] $ok, [string] $what) {
     Write-Host ("  {0,-5} {1}" -f $(if ($ok) { 'PASS' } else { 'GAP' }), $what)
 }
 
-# Run the CLI with a timeout, stdin from an empty file (so a stray prompt
-# gets end-of-input instead of waiting forever) and trace output enabled.
+# Run the CLI with a timeout, stdin from a file (empty by default, so a stray
+# prompt gets end-of-input instead of waiting forever) and trace output enabled.
 # On a timeout the process tree is killed and the last trace lines shown.
-function Invoke-PP([string[]] $Arguments, [int] $TimeoutSec = 180) {
+function Invoke-PP([string[]] $Arguments, [int] $TimeoutSec = 180, [string] $Stdin = '') {
     $id = [guid]::NewGuid().ToString('N')
     $outFile = Join-Path $root "$id.out"
     $errFile = Join-Path $root "$id.err"
     $inFile = Join-Path $root "$id.in"
-    Set-Content -Path $inFile -Value '' -NoNewline
+    Set-Content -Path $inFile -Value $Stdin -NoNewline
     $quoted = $Arguments | ForEach-Object { '"' + $_ + '"' }
     $env:PROFILEPORT_TRACE = '1'
     $p = Start-Process -FilePath $Exe -ArgumentList $quoted -NoNewWindow -PassThru `
@@ -187,6 +187,16 @@ $again = (Invoke-PP @('restore', $pkg, '--to', $dst, '--code', $code)).Out
 Write-Host (Mask $again)
 Check ($again -match 'already there with identical content') 'second restore recognises files already in place'
 Check ($again -notmatch 'Name conflicts') 'second restore reports no conflicts'
+
+Write-Host '== Wipe'
+$w = Invoke-PP @('wipe', $pkg) -Stdin "9999`n"
+Check ($w.Exit -eq 2 -and (Test-Path -LiteralPath (Join-Path $pkg 'header.bin'))) 'wipe with the wrong ticket typed is refused and changes nothing'
+$w = Invoke-PP @('wipe', $pkg, '--overwrite') -Stdin "1001`n"
+Write-Host (Mask $w.Out)
+Check ($w.Exit -eq 0 -and $w.Out -match 'key destroyed') 'wipe succeeds and reports the key destroyed'
+Check (-not (Test-Path -LiteralPath $pkg)) 'wiped backup folder is gone'
+Check (Test-Path -LiteralPath (Join-Path $drive 'ProfilePort\transfers')) 'transfers folder kept after wipe'
+Check ([IO.File]::ReadAllText("$dst\Documents\report.txt") -eq 'quarterly numbers') 'restored files untouched by the wipe'
 
 # Summary
 $fail = @($results | Where-Object Result -eq 'FAIL')

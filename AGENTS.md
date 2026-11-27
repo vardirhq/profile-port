@@ -68,7 +68,8 @@ it unless asked.
 | `crypto.rs` | XChaCha20-Poly1305 seal/open, Argon2id key wrapping, `KdfParams` (`recommended()`, and `insecure_fast_for_tests()`, which tests must use) |
 | `log.rs` | Append-only encrypted `manifest.log`. A torn final frame is discarded; damage anywhere earlier is `Error::Corrupt`. |
 | `writer.rs` | `PackageWriter`: `create`, `resume` (replays the log), `add_*`, `commit` (sync packs → append records → sync log), `finish`, `discard` (removes a package with no file data, file by file). `WriterOptions` sets chunk and pack sizes, the commit batch size and the KDF. |
-| `reader.rs` | `PackageReader::open(dir, code)`, `manifest()` (builds `Entry` values from `Record`s), `read_file`; `read_info` / `list_packages` need no code |
+| `reader.rs` | `PackageReader::open(dir, code)`, `manifest()` (builds `Entry` values from `Record`s), `read_file`; `read_info` / `list_packages` need no code (`list_packages` returns `(folder, Result<PackageInfo>)` so damaged and partly wiped packages keep their path) |
+| `wipe.rs` | `wipe(dir, WipeOptions, progress)`: overwrite `header.bin` in place with `WIPED_MAGIC` + random (destroys the key), optionally overwrite log and packs, then delete. Refuses (`NotWipeable`) any folder holding non-package entries; never follows links. `read_header` reports a wiped header as `Error::PartlyWiped` |
 | `error.rs` | The crate's single `Error` enum (thiserror) |
 
 On disk a package is `<drive>/ProfilePort/transfers/<ticket>-<hex>/` holding
@@ -108,7 +109,8 @@ files count as `already_present`.
 
 ### Apps
 
-- `apps/cli/src/main.rs` is one file. `Cmd` is the clap enum, and `main`
+- `apps/cli/src/main.rs` is one file. `wipe` and the post-restore wipe offer
+  share `wipe_one`/`print_wiped`. `Cmd` is the clap enum, and `main`
   maps `Outcome::{Clean, Issues}` / `Err` to exit codes `0` / `1` / `2`.
   Codes are read with `get_code`, which prompts when `--code` is not given.
 - `apps/desktop` is described under "Desktop (Slint)" below.
@@ -132,6 +134,12 @@ synthetic, such as `"anna"` and `"OLD-PC"`.
 **Data safety**
 - Restore never overwrites or deletes user files. Don't weaken the conflict
   rules, and keep reruns idempotent.
+- `package::wipe` is the only code that deletes a package with data in it.
+  Keep its allowlist strict (exact package file names, no links) so a wrong
+  folder is refused untouched, destroy the header before deleting anything,
+  and keep an interrupted wipe rerunnable. Both apps require the ticket (or
+  `WIPE`) typed back first. Don't describe a wipe as guaranteed erasure on
+  flash; see `docs/development/security.md`.
 - Never follow symlinks, junctions or reparse points on export, and never
   follow links already on the destination during restore. Record them
   instead.

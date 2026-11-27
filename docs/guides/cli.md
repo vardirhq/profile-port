@@ -89,8 +89,43 @@ Confirm the destination and upload implications before using it.
 
 `--no-verify` disables restore read-back. Such a restore is never reported as
 complete: it finishes with items to review (exit code `1`), says the files were
-not checked, and does not offer to delete the package. Files already present
+not checked, and does not offer to wipe the package. Files already present
 with identical content are still compared.
+
+After a fully successful restore in an interactive terminal, the CLI offers
+to wipe the package (answer `y`). Decline until the customer has checked their
+files; you can wipe later with `wipe`.
+
+## Wipe backups from the drive
+
+```text
+profileport-cli wipe <package-folder> [<package-folder> …] [--overwrite]
+profileport-cli wipe --drive E:\ --older-than 14 [--overwrite]
+profileport-cli wipe --drive E:\ --all [--overwrite]
+```
+
+`wipe` destroys a package's key by overwriting `header.bin` in place, then
+deletes the package's files and folder. No transfer code is needed. It lists
+what it is about to wipe and asks you to type the ticket number (one named
+package) or `WIPE` (several, or `--drive`). Anything else cancels without
+changing anything.
+
+- `--drive` with `--older-than DAYS` wipes backups created at least that many
+  days ago; `--all` wipes every backup on the drive ("prepare for next
+  customer"). Partly wiped backups are always included; damaged backups are
+  named and left alone.
+- `--overwrite` also overwrites the manifest and pack data with random bytes
+  before deleting it. It takes about as long as the backup did, and on flash
+  drives it doesn't guarantee that old blocks are gone; see
+  [security](../development/security.md#wiping-backups-from-the-drive).
+- A folder containing anything that is not part of a package is refused, and
+  nothing in it is changed. Links are not followed.
+- If the wipe is interrupted (drive pulled), the package can no longer be
+  opened and is listed as partly wiped. Run `wipe` on it again to finish.
+- Exit code `2` if any package could not be wiped; the others are still wiped.
+
+Discard the device tag with the code once the job is closed. That, together
+with the encryption, is what protects any remnants the drive keeps.
 
 The optional `--code` argument to resume, verify and restore can expose the
 code in shell history or process listings. Omit it to use the interactive
