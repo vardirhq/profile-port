@@ -4,7 +4,7 @@
 
 
 **Amended by [0007](0007-code-in-ticket-and-no-typing.md):** the code is
-now kept in the ticket's sensitive-data field (cleared when the job closes)
+now kept in the ticket's sensitive-data field (cleared when the ticket is set to finished)
 rather than on a paper device tag, and the desktop replaces the type-back
 with a checkbox. The reasoning below is kept as the original record.
 

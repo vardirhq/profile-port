@@ -125,8 +125,8 @@ When the restore is checked and the customer has checked their files:
    **Cancel** changes nothing.
 3. The backup's key is destroyed first, then its files are deleted, and the
    list updates.
-4. Remove the code from the ticket's sensitive-data field when the job is
-   closed.
+4. Set the ticket to finished when the job is done; that clears the code
+   from its sensitive-data field.
 
 A wipe can't be undone. It refuses a folder holding anything other than backup
 files. On flash drives it can't guarantee that no old blocks remain inside the

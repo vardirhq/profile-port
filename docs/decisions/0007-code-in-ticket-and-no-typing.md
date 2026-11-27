@@ -4,9 +4,10 @@
 code" parts of [0002](0002-package-format.md).
 
 **Implementation status:** The desktop and CLI wording, the desktop's
-pick-from-lists screens and the code-written checkbox are implemented. Clearing
-the code from the ticket when a job closes is a procedure in the ticket system;
-ProfilePort can't enforce it.
+pick-from-lists screens and the code-written checkbox are implemented. The
+ticket system clears the sensitive-data field when a ticket is set to finished;
+that is the ticket system's behaviour, which ProfilePort relies on but can't
+enforce.
 
 ## Context
 
@@ -17,8 +18,9 @@ makes a wipe final on flash media (see
 [security](../development/security.md#wiping-backups-from-the-drive)).
 
 In practice the store already keeps per-job secrets (passwords, PINs) in a
-**sensitive-data field** of the ticket. That field has restricted access and
-is the established place for such data. A separate paper tag is a new habit,
+**sensitive-data field** of the ticket. It is the established place for such
+data, and the ticket system clears it when the ticket is set to finished, as
+data protection requires. A separate paper tag is a new habit,
 can be lost, and puts the code on the bench where anyone can read it.
 
 Separately, the desktop app should be usable without typing anything except
@@ -32,9 +34,9 @@ the source is still there.
    ordinary ticket notes, and never on the transfer drive. The app's wording
    says so. A paper device tag remains acceptable where a store has no such
    field.
-2. **The code must be removed from the ticket when the job is closed.** This
-   is what now ends the code's life. Until then, anyone who can read that
-   field and has the drive can open the backup.
+2. **The code's life ends when the ticket is set to finished**, because the
+   field is cleared then. Until then, anyone who can read that field and has
+   the drive can open the backup, as with the passwords kept there.
 3. **The desktop replaces the type-back with a checkbox**: "I've stored the
    code in the ticket and checked it". The CLI keeps the type-back.
 4. **The desktop takes everything else from lists**: profiles, detected
@@ -43,16 +45,13 @@ the source is still there.
 
 ## Consequences
 
-- **Wiping depends on the ticket procedure.** On flash media a wipe removes
+- **Wiping relies on the field being cleared.** On flash media a wipe removes
   the backup from the filesystem, but encrypted remnants may survive inside
-  the drive. They are unreadable only once no copy of the code exists. If the
-  ticket system keeps the field's old values (history, audit log, backups of
-  the ticket database), the code outlives the job. Check how the field is
-  cleared and whether its history is retained.
-- **The ticket now links the customer to the key.** The drive shows only the
-  ticket number, but whoever can read the sensitive field can identify the
-  customer and open their backup. Access to that field must be limited to the
-  people who need it, as it presumably already is for passwords.
+  the drive. They are unreadable once no copy of the code exists, which is
+  when the ticket is finished. A copy made elsewhere (a note, a photo) would
+  undo that, so the app tells technicians not to.
+- **The ticket links the customer to the key** while the job is open, in the
+  same field and under the same access as the customer's passwords.
 - **A mistyped code is no longer caught before copying.** Copying the code
   into a ticket field is usually by copy and paste or careful typing; the
   check symbols still catch most typos at restore. If the stored code is

@@ -202,7 +202,8 @@ filesystem sees them*. Flash drives and SSDs remap writes internally (wear
 levelling), so earlier copies of a block can survive where only the drive's
 controller can read them. Those are ciphertext. A surviving copy of the old
 header still opens with the transfer code, which is why the code is kept off the
-drive and removed from the ticket when the job closes: once no copy of the
+drive and kept only in the ticket's sensitive-data field, which is cleared
+when the ticket is set to finished: once no copy of the
 code exists, remnants are unreadable. See
 [ADR 0002](decisions/0002-package-format.md#key-management) and
 [ADR 0007](decisions/0007-code-in-ticket-and-no-typing.md).

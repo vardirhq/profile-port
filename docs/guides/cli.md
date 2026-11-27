@@ -137,9 +137,9 @@ changing anything.
   opened and is listed as partly wiped. Run `wipe` on it again to finish.
 - Exit code `2` if any package could not be wiped; the others are still wiped.
 
-Remove the code from the ticket's sensitive-data field once the job is
-closed. That, together with the encryption, is what protects any remnants the
-drive keeps.
+The ticket's sensitive-data field, where the code is kept, is cleared when
+the ticket is set to finished. That, together with the encryption, is what
+protects any remnants the drive keeps.
 
 The optional `--code` argument to resume, verify and restore can expose the
 code in shell history or process listings. Omit it to use the interactive

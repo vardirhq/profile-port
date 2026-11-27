@@ -606,7 +606,7 @@ fn print_wiped(w: &package::WipeReport) {
         String::new()
     };
     println!("✔ Wiped {what}: key destroyed, {} file(s) deleted{overwritten}.", w.files_removed);
-    println!("  Remove the transfer code from the ticket when the job is closed.");
+    println!("  The code in the ticket's sensitive-data field is cleared when the ticket is set to finished.");
 }
 
 // ---------------------------------------------------------------- helpers

@@ -97,7 +97,7 @@ When the job is done, `wipe` (or **Wipe backup…** in the desktop app)
 destroys the package's key and deletes it from the drive. On flash drives
 this can't guarantee that no old blocks survive inside the drive. Those are
 encrypted, and the code that opens them is kept only in the ticket's
-sensitive-data field, so remove it from the ticket when the job closes. See [security](docs/development/security.md#wiping-backups-from-the-drive).
+sensitive-data field, which is cleared when the ticket is set to finished. See [security](docs/development/security.md#wiping-backups-from-the-drive).
 
 Restore never overwrites or deletes anything. Existing files are left alone
 and reported (or, with `--keep-both`, restored as `name (restored).ext`).

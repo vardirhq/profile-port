@@ -336,7 +336,7 @@ pub fn wipe_package(path: &Path, overwrite: bool, progress: &mut dyn FnMut(&Prog
     if r.bytes_overwritten > 0 {
         text.push_str(&format!(" {} of backup data was overwritten first.", human_bytes(r.bytes_overwritten)));
     }
-    text.push_str(" Remove the transfer code from the ticket when the job is closed.");
+    text.push_str(" The code in the ticket's sensitive-data field is cleared when the ticket is set to finished.");
     Ok(text)
 }
 
@@ -370,7 +370,9 @@ pub fn wipe_all(drive: &Path, overwrite: bool, progress: &mut dyn FnMut(&Progres
     if !failed.is_empty() {
         text.push_str(&format!("\nCould not be wiped:\n{}", failed.join("\n")));
     }
-    text.push_str("\nRemove the transfer codes from the tickets when the jobs are closed.");
+    text.push_str(
+        "\nThe codes in the tickets' sensitive-data fields are cleared when the tickets are set to finished.",
+    );
     (failed.is_empty(), text)
 }
 
