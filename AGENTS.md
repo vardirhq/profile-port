@@ -142,9 +142,10 @@ synthetic, such as `"anna"` and `"OLD-PC"`.
 - `package::wipe` is the only code that deletes a package with data in it.
   Keep its allowlist strict (exact package file names, no links) so a wrong
   folder is refused untouched, destroy the header before deleting anything,
-  and keep an interrupted wipe rerunnable. Both apps require the ticket (or
-  `WIPE`) typed back first. Don't describe a wipe as guaranteed erasure on
-  flash; see `docs/development/security.md`.
+  and keep an interrupted wipe rerunnable. Both apps confirm first: the CLI
+  by the ticket (or `WIPE`) typed back, the desktop by an explicit
+  confirmation step that names the backup(s). Don't describe a wipe as
+  guaranteed erasure on flash; see `docs/development/security.md`.
 - Never follow symlinks, junctions or reparse points on export, and never
   follow links already on the destination during restore. Record them
   instead.
@@ -239,8 +240,11 @@ it a label in the CLI's `print_skips`.
   snake_case in Rust.
 - Threading: callbacks run on the UI thread. Long operations go through
   `run_job`, which sets `busy`, runs the closure on a `std::thread`, and
-  posts the `(status, details)` result back with
-  `slint::invoke_from_event_loop`. Progress uses `progress_callback`, which
+  posts its `Outcome` (status, details, whether it succeeded, whether to
+  offer a wipe or a check, and which backup to select) back with
+  `slint::invoke_from_event_loop`, then invokes `refresh` to re-read drives
+  and backups. The result shows on the page the job started from
+  (`result-page`). Progress uses `progress_callback`, which
   is throttled to 150 ms. Don't touch `AppWindow` from the worker thread;
   capture `app.as_weak()` and upgrade it inside the event-loop closure.
   `prepare_backup` spawns its own thread (Argon2id is slow) and hands the
@@ -253,8 +257,17 @@ it a label in the CLI's `print_skips`.
   `main.rs` closures.
 - `ui/theme.slint` holds every colour, size and font token (`Theme.dark` is
   set from `PROFILEPORT_THEME=dark`). Use tokens, not literal colours.
-  `components.slint` is mostly left over from the earlier prototype. The
-  current screens use `Label` and Slint std-widgets.
+  `components.slint` holds the shared pieces from the earlier prototype
+  (`Label`, `Card`, `Icon`, `Badge`, `NavItem`, `ActionCard`); `app.slint`
+  adds the screen-specific ones (`Step`, `ChoiceCard`, `BackupRowView`,
+  `ResultCard`, `Callout`, `SpaceBar`) and uses Slint std-widgets for
+  buttons, fields and checkboxes. Lists reach the UI as structs
+  (`ProfileItem`, `DriveItem`, `BackupRow`) built in `main.rs` from
+  `transfer.rs` values.
+- Windows builds link the C runtime statically (`.cargo/config.toml`,
+  `+crt-static`), so the exes run on a fresh PC without the Visual C++
+  Redistributable; CI checks the release exes import no VC runtime DLL.
+  Don't remove it.
 - Bundled assets: Inter fonts (OFL) and Lucide icons (ISC), with their
   licence files in `ui/fonts/` and `ui/icons/`. Keep the licences when adding
   assets.

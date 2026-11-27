@@ -39,8 +39,12 @@ backup, or create an installed-program inventory.
    source and write the destination. The planned automatic elevation and backup
    privileges are not implemented, so another user's private files may be
    skipped as "access denied".
-4. Obtain `ProfilePort.exe` from a trusted build. The Windows CI artifact also
-   contains `profileport-cli.exe`. See [building and testing](../development/building-and-testing.md).
+4. Obtain `ProfilePort.exe` from a trusted build and copy it onto the
+   transfer drive; it needs no installation, no network and no Visual C++
+   Redistributable, and writes no settings to the PC. It is not code-signed:
+   if Windows SmartScreen warns, unblock the file once (Properties → Unblock)
+   before copying it. The Windows CI artifact also contains
+   `profileport-cli.exe`. See [building and testing](../development/building-and-testing.md).
 
 For a controlled rehearsal, follow the [Windows VM guide](windows-vm-testing.md).
 

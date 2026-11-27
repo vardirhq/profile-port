@@ -15,7 +15,10 @@ cargo run -p profileport-desktop
 ```
 
 On Windows the release binaries are `target/release/profileport-cli.exe` and
-`target/release/ProfilePort.exe`; the distinct names avoid a collision on a
+`target/release/ProfilePort.exe`. They link the C runtime statically
+(`.cargo/config.toml`, `+crt-static`), so they run without the Visual C++
+Redistributable; the Windows CI job checks that neither imports a VC runtime
+DLL. The two names differ on purpose, to avoid a collision on a
 case-insensitive filesystem. The desktop targets Windows 10/11, but the current
 GUI has not yet been visually or interactively verified on Windows clients.
 `PROFILEPORT_THEME=dark` opts into dark mode; other values use the default light
