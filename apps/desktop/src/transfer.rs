@@ -220,7 +220,10 @@ mod tests {
         let dir = prepared.run(&code, &Default::default(), &mut |_| {}).unwrap().package_dir;
 
         let (paths, labels, _) = list_backups(&drive).unwrap();
-        assert_eq!(paths, vec![dir.clone()]);
+        // `prepare` canonicalises the drive (on Windows a `\\?\` long path);
+        // the listing keeps the drive path as given, e.g. an 8.3 short name.
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].canonicalize().unwrap(), dir.canonicalize().unwrap());
         assert!(labels[0].contains("4711"), "{labels:?}");
 
         let (expected, prompt) = wipe_confirmation(&dir).unwrap();
