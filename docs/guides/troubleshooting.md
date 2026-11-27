@@ -29,13 +29,14 @@ restore then always finishes with items to review (exit code `1`) and no
 wipe is offered. In interactive use the CLI offers to wipe a package after a
 restore it considers fully successful (read back and nothing to review);
 retain it until your own checks are complete. In the desktop app, wiping is a
-separate **Wipe backup…** action.
+separate **Wipe from drive…** action, also offered after a fully successful
+restore.
 
-A package listed as **partly wiped** (CLI `list`, desktop **Find backups**)
+A package listed as **partly wiped** (CLI `list`, desktop backup list)
 was being wiped when the drive was removed or the program stopped. Its key is
 already destroyed, so it can't be restored. Run the wipe on it again
 (`profileport-cli wipe <folder>`, typing `WIPE`, or select it in the desktop
-and choose **Wipe backup…**) to finish. If a wipe says the folder contains
+and choose **Finish wiping**) to finish. If a wipe says the folder contains
 something that is not part of a package, nothing was changed: check you chose
 the right folder, and move the named item out yourself only if you are sure
 what it is.

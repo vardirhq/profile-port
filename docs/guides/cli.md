@@ -23,6 +23,18 @@ readable or fully local. Windows profile discovery uses the running system's
 registry; it does not load an offline Windows installation or an offline user
 hive. See [coverage](coverage.md).
 
+## Find the drive
+
+```powershell
+profileport-cli drives
+```
+
+Lists the drives other than the system drive (USB sticks first) with their
+label, free space and how many backups each holds. Use the path it prints as
+`--drive`. A folder can be added to the list with the `PROFILEPORT_DRIVES`
+environment variable (separated like `PATH`), for test machines whose transfer
+disk isn't detected as a drive.
+
 ## Export
 
 ```powershell
@@ -30,8 +42,9 @@ profileport-cli export 'C:\Users\test-source' --drive 'E:\' --ticket VM-001
 ```
 
 The command creates a package under `E:\ProfilePort\transfers\`, displays a
-code, and asks the operator to type it back before copying. Record the code
-securely. The code is not stored on the drive, cannot be recovered by
+code, and asks the operator to type it back before copying. Store the code
+in the ticket's sensitive-data field, not in ordinary notes (see
+[security](../development/security.md)). The code is not stored on the drive, cannot be recovered by
 ProfilePort, and is required to resume, verify or restore the package. The
 plaintext ticket must be 1–32 ASCII letters, digits, `_`, or `-`; do not use
 identifying information. The source profile and detected external known folders
@@ -124,8 +137,9 @@ changing anything.
   opened and is listed as partly wiped. Run `wipe` on it again to finish.
 - Exit code `2` if any package could not be wiped; the others are still wiped.
 
-Discard the device tag with the code once the job is closed. That, together
-with the encryption, is what protects any remnants the drive keeps.
+Remove the code from the ticket's sensitive-data field once the job is
+closed. That, together with the encryption, is what protects any remnants the
+drive keeps.
 
 The optional `--code` argument to resume, verify and restore can expose the
 code in shell history or process listings. Omit it to use the interactive

@@ -19,7 +19,7 @@ pub enum CodeError {
     WrongLength(usize),
     #[error("'{0}' is not used in transfer codes")]
     InvalidCharacter(char),
-    #[error("that code isn't valid; check it against the device tag")]
+    #[error("that code isn't valid; check it against the ticket")]
     ChecksumMismatch,
 }
 

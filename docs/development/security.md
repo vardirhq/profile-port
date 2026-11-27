@@ -15,10 +15,23 @@ parameters are specified in [the package format](../package-format.md).
 The 12-symbol code has 10 random base32 symbols (50 bits) and two check
 symbols. The check symbols catch many entry mistakes; they add no secrecy. The
 code is the practical key to the backup: anyone who can obtain both package
-and code can attempt to open it offline. Protect the code and the drive
-separately using the organization's approved process. Do not treat a device
-tag as a secret if it is stored with the drive. Do not put a code in a ticket,
-issue, shared log or screenshot. There is no implemented code recovery/reset.
+and code can attempt to open it offline.
+
+Keep the code in the ticket system's **sensitive-data field** (restricted
+access), never in ordinary ticket notes, issues, shared logs, screenshots or
+photos, and never on the drive. Remove it from the ticket when the job is
+closed, and find out whether the ticket system keeps old values of that field
+(history, audit log, database backups): while any copy exists, it plus the
+drive opens the backup. Whoever can read the field can link the backup to the
+customer, so its access must be limited. A paper device tag kept with the
+customer's devices is an alternative where no such field exists. See
+[ADR 0007](../decisions/0007-code-in-ticket-and-no-typing.md). There is no
+implemented code recovery/reset.
+
+The desktop no longer asks for the code to be typed back before copying; the
+technician ticks "I've stored the code in the ticket and checked it". A wrongly
+stored code is only found at restore, so check the backup with the stored code
+while the source PC is still available.
 
 The CLI can accept `--code`; command-line arguments can appear in process
 listings and shell history. Prefer the interactive prompt. Avoid collecting
@@ -81,7 +94,8 @@ What a wipe does and doesn't achieve:
   blocks where only the drive's controller can read them. Everything in a
   package was encrypted before it was written, so such remnants are
   ciphertext, and an old copy of the header still needs the transfer code.
-  **Discarding the device tag with the code is part of the wipe.** Neither
+  **Removing the code from the ticket when the job closes is part of the
+  wipe** (or discarding the paper tag, where one is used). Neither
   ProfilePort nor this document can prove that a specific drive keeps no
   remnants; treat the encryption plus the discarded code as the protection,
   and the wipe as removing the package from normal reach.
@@ -100,7 +114,7 @@ What a wipe does and doesn't achieve:
   is not implemented; the technician decides.
 
 Losing a package's only code also makes recovery impossible, so protect the
-device tag until the job is closed.
+code in the ticket until the job is closed.
 
 Report suspected vulnerabilities privately through the repository owner's
 established contact route if available; do not include real customer data.

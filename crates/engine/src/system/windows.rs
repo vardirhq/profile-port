@@ -19,7 +19,7 @@ use windows_sys::Win32::UI::Shell::{
     FOLDERID_Videos, SHGetKnownFolderPath, KF_FLAG_DEFAULT,
 };
 
-use super::ProfileInfo;
+use super::{DriveInfo, ProfileInfo};
 
 const PROFILE_LIST: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList";
 const USER_SHELL_FOLDERS: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders";
@@ -194,4 +194,71 @@ pub(super) fn known_folders(profile: &Path) -> Vec<(KnownFolder, PathBuf)> {
             Some((kf, expand_for_profile(&value, profile)))
         })
         .collect()
+}
+
+/// Removable and fixed drives with media in them, except the system drive.
+/// Network, optical and RAM drives are left out.
+pub(super) fn list_drives() -> Vec<DriveInfo> {
+    use windows_sys::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives, GetVolumeInformationW};
+    // GetDriveTypeW results (WinBase.h); windows-sys puts them behind the
+    // separate `Win32_System_WindowsProgramming` feature.
+    const DRIVE_REMOVABLE: u32 = 2;
+    const DRIVE_FIXED: u32 = 3;
+    let system = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".into()).to_ascii_uppercase();
+    // SAFETY: no arguments; returns a bitmask of drive letters.
+    let mask = unsafe { GetLogicalDrives() };
+    let mut out = Vec::new();
+    for i in 0..26u8 {
+        if mask & (1 << i) == 0 {
+            continue;
+        }
+        let letter = (b'A' + i) as char;
+        if format!("{letter}:") == system {
+            continue;
+        }
+        let root = format!("{letter}:\\");
+        let w = wide(&root);
+        // SAFETY: `w` is a NUL-terminated root path.
+        let removable = match unsafe { GetDriveTypeW(w.as_ptr()) } {
+            DRIVE_REMOVABLE => true,
+            DRIVE_FIXED => false,
+            _ => continue,
+        };
+        let path = PathBuf::from(&root);
+        let (free_bytes, total_bytes) = space(&path);
+        if total_bytes.is_none() {
+            continue; // e.g. an empty card-reader slot
+        }
+        let mut label = [0u16; 261];
+        // SAFETY: `w` is NUL-terminated; the label buffer's length is passed;
+        // the other outputs are optional and passed as null.
+        let ok = unsafe {
+            GetVolumeInformationW(
+                w.as_ptr(),
+                label.as_mut_ptr(),
+                label.len() as u32,
+                null_mut(),
+                null_mut(),
+                null_mut(),
+                null_mut(),
+                0,
+            )
+        };
+        let label = if ok != 0 { from_wide(&label) } else { String::new() };
+        out.push(DriveInfo { path, label, removable, free_bytes, total_bytes });
+    }
+    out
+}
+
+/// (free bytes available to this user, total bytes) of the volume holding
+/// `path`.
+pub(super) fn space(path: &Path) -> (Option<u64>, Option<u64>) {
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+    let w = wide(&path.to_string_lossy());
+    let (mut free, mut total) = (0u64, 0u64);
+    // SAFETY: `w` is NUL-terminated; the outputs are valid u64 pointers or null.
+    if unsafe { GetDiskFreeSpaceExW(w.as_ptr(), &mut free, &mut total, null_mut()) } == 0 {
+        return (None, None);
+    }
+    (Some(free), Some(total))
 }

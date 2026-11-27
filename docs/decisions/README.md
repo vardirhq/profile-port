@@ -16,6 +16,7 @@ and the [current architecture](../development/architecture.md).
 | [0004](0004-privilege-model.md) | Always run elevated | Accepted |
 | [0005](0005-locked-files-and-registry.md) | Locked files: avoid in Phase 1, VSS in Phase 2; registry archived, not merged | Accepted |
 | [0006](0006-cross-platform-restore.md) | Cross-platform restore and standard folders (Windows, Linux, macOS) | Accepted |
+| [0007](0007-code-in-ticket-and-no-typing.md) | Transfer code kept in the ticket's sensitive-data field; desktop without typing | Accepted (amends 0002) |
 
 The order matters: 0002 decides most of 0003, and 0003 and 0005 both depend on 0004.
 
